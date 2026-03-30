@@ -65,6 +65,8 @@ export function AnnouncementView() {
   const [isSaving, setIsSaving] = useState(false)
   const [items, setItems] = useState<SOPItem[]>([])
   const [activeTab, setActiveTab] = useState<'Pengumuman' | 'SOP' | 'Panduan'>('Pengumuman')
+  const [previewFile, setPreviewFile] = useState<{ url: string; type: 'pdf' | 'image' } | null>(null)
+  const [previewIndex, setPreviewIndex] = useState(0)
 
   const isAdmin = currentUser?.role === 'Admin'
 
@@ -400,26 +402,58 @@ export function AnnouncementView() {
               <p className="text-stone-600 text-sm whitespace-pre-line">
                 {item.content}
               </p>
-              {item.files && (
-                <div className="flex gap-2 mt-3 overflow-x-auto pb-2">
-                  {JSON.parse(item.files).slice(0, 4).map((file: string, i: number) => (
-                    <div key={i} className="relative w-20 h-20 rounded-lg overflow-hidden border bg-stone-100 shrink-0">
-                      {file.startsWith('data:application/pdf') ? (
-                        <div className="w-full h-full flex items-center justify-center bg-red-50">
-                          <FileText className="w-8 h-8 text-red-500" />
+              {item.files && (() => {
+                const fileList = JSON.parse(item.files)
+                const visibleFiles = fileList.slice(0, 4)
+                const extraCount = fileList.length - 4
+                return (
+                  <div className="flex gap-2 mt-3 overflow-x-auto pb-2">
+                    {visibleFiles.map((file: string, i: number) => {
+                      const isPdf = file.startsWith('data:application/pdf')
+                      return (
+                        <div
+                          key={i}
+                          className="relative w-20 h-20 rounded-lg overflow-hidden border bg-stone-100 shrink-0 cursor-pointer hover:ring-2 hover:ring-violet-500 hover:shadow-md transition-all group"
+                          onClick={() => {
+                            if (isPdf) {
+                              // Open PDF in new tab
+                              const link = window.document.createElement('a')
+                              link.href = file
+                              link.target = '_blank'
+                              link.rel = 'noopener noreferrer'
+                              link.click()
+                            } else {
+                              // Open image in preview dialog
+                              setPreviewIndex(i)
+                              setPreviewFile({ url: file, type: 'image' })
+                            }
+                          }}
+                          title={isPdf ? 'Klik untuk buka PDF' : 'Klik untuk preview gambar'}
+                        >
+                          {isPdf ? (
+                            <div className="w-full h-full flex flex-col items-center justify-center bg-red-50">
+                              <FileText className="w-8 h-8 text-red-500" />
+                              <span className="text-[8px] text-red-400 mt-0.5 font-medium">PDF</span>
+                            </div>
+                          ) : (
+                            <>
+                              <img src={file} alt="" className="w-full h-full object-cover" />
+                              <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-all flex items-center justify-center opacity-0 group-hover:opacity-100">
+                                <Eye className="w-6 h-6 text-white drop-shadow-lg" />
+                              </div>
+                            </>
+                          )}
+                          {extraCount > 0 && i === 3 && (
+                            <div className="absolute inset-0 bg-black/50 flex items-center justify-center text-white text-sm font-medium">
+                              +{fileList.length - 4}
+                            </div>
+                          )}
                         </div>
-                      ) : (
-                        <img src={file} alt="" className="w-full h-full object-cover" />
-                      )}
-                      {JSON.parse(item.files).length > 4 && i === 3 && (
-                        <div className="absolute inset-0 bg-black/50 flex items-center justify-center text-white text-sm font-medium">
-                          +{JSON.parse(item.files).length - 4}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
+                      )
+                    })}
+                  </div>
+                )
+              })()}
             </CardContent>
           </Card>
         ))}
@@ -483,6 +517,55 @@ export function AnnouncementView() {
           {renderItems()}
         </div>
       )}
+
+      {/* File Preview Dialog */}
+      <Dialog open={!!previewFile} onOpenChange={(open) => { if (!open) setPreviewFile(null) }}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden p-0">
+          <DialogHeader className="p-6 pb-2">
+            <DialogTitle>Preview File</DialogTitle>
+            <DialogDescription>
+              {previewFile?.type === 'pdf' ? 'Preview dokumen PDF' : 'Preview gambar'}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="px-6 pb-6">
+            {previewFile?.type === 'image' && (
+              <div className="rounded-lg overflow-hidden border">
+                <img
+                  src={previewFile.url}
+                  alt="Preview"
+                  className="max-w-full max-h-[70vh] object-contain mx-auto"
+                />
+              </div>
+            )}
+            {previewFile?.type === 'pdf' && (
+              <div className="rounded-lg overflow-hidden border bg-stone-50">
+                <iframe
+                  src={previewFile.url}
+                  className="w-full h-[70vh]"
+                  title="PDF Preview"
+                />
+              </div>
+            )}
+          </div>
+          <DialogFooter className="px-6 pb-6">
+            <Button
+              variant="outline"
+              onClick={() => {
+                if (previewFile) {
+                  const link = window.document.createElement('a')
+                  link.href = previewFile.url
+                  link.download = previewFile.type === 'pdf' ? 'document.pdf' : 'image.png'
+                  link.click()
+                }
+              }}
+            >
+              <FileText className="w-4 h-4 mr-2" />
+              Download
+            </Button>
+            <Button onClick={() => setPreviewFile(null)}>Tutup</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Create/Edit Dialog - Admin only */}
       {isAdmin && (
