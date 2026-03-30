@@ -1,0 +1,483 @@
+'use client'
+
+import { Button } from '@/components/ui/button'
+import { Card, CardContent } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
+import { Progress } from '@/components/ui/progress'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
+import { useAppStore, STAGES } from '@/lib/store'
+import { 
+  Plus, 
+  LayoutGrid, 
+  List, 
+  FolderKanban, 
+  Trash2,
+  CheckCircle2,
+  XCircle,
+  MapPin,
+  Clock,
+  User
+} from 'lucide-react'
+import { useState } from 'react'
+import { cn } from '@/lib/utils'
+
+// Stage gradient colors - Purple, Blue, Orange theme
+const STAGE_GRADIENTS: Record<number, { from: string; to: string; border: string; text: string; bg: string; dot: string }> = {
+  1: { from: 'from-violet-100', to: 'to-violet-50', border: 'border-violet-300', text: 'text-violet-700', bg: 'bg-violet-600', dot: 'bg-violet-500' },
+  2: { from: 'from-orange-100', to: 'to-orange-50', border: 'border-orange-300', text: 'text-orange-700', bg: 'bg-orange-500', dot: 'bg-orange-500' },
+  3: { from: 'from-blue-100', to: 'to-blue-50', border: 'border-blue-300', text: 'text-blue-700', bg: 'bg-blue-600', dot: 'bg-blue-500' },
+  4: { from: 'from-purple-100', to: 'to-purple-50', border: 'border-purple-300', text: 'text-purple-700', bg: 'bg-purple-600', dot: 'bg-purple-500' },
+}
+
+export function DashboardView() {
+  const { currentUser, projects, users, setActiveView, setSelectedProjectId, deleteProject, showAlert, showConfirm } = useAppStore()
+  const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid')
+  
+  const canManageProject = currentUser ? ['Manager', 'Admin'].includes(currentUser.role) : false
+  
+  const visibleProjects = currentUser && ['Manager', 'Admin'].includes(currentUser.role)
+    ? projects
+    : projects.filter(p => p.tasks.some(t => t.assignedTo === currentUser?.id))
+
+  const handleDeleteProject = (projectId: string) => {
+    showConfirm(
+      'Peringatan: Yakin ingin menghapus proyek ini secara permanen? Aksi ini tidak dapat dibatalkan.',
+      async () => {
+        try {
+          await fetch(`/api/projects?id=${projectId}`, { method: 'DELETE' })
+          deleteProject(projectId)
+        } catch {
+          showAlert('Gagal menghapus proyek')
+        }
+      }
+    )
+  }
+
+  // Calculate task progress for a project
+  const getTaskProgress = (project: typeof projects[0]) => {
+    const totalTasks = project.tasks.length
+    const completedTasks = project.tasks.filter(t => t.status === 'completed').length
+    const percentage = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0
+    
+    // Progress per stage
+    const stageProgress: Record<number, { total: number; completed: number }> = {}
+    for (let stage = 1; stage <= 4; stage++) {
+      const stageTasks = project.tasks.filter(t => t.stage === stage)
+      stageProgress[stage] = {
+        total: stageTasks.length,
+        completed: stageTasks.filter(t => t.status === 'completed').length
+      }
+    }
+    
+    // Team members per stage
+    const teamByStage: Record<number, Array<{ userId: string | null; name: string; role: string; status: string }>> = {}
+    for (let stage = 1; stage <= 4; stage++) {
+      teamByStage[stage] = project.tasks
+        .filter(t => t.stage === stage)
+        .map(t => ({
+          userId: t.assignedTo,
+          name: getUserName(t.assignedTo),
+          role: t.title,
+          status: t.status
+        }))
+    }
+    
+    return { totalTasks, completedTasks, percentage, stageProgress, teamByStage }
+  }
+
+  // Get user name by ID
+  const getUserName = (userId: string | null) => {
+    if (!userId) return 'Unassigned'
+    const user = users.find(u => u.id === userId)
+    return user?.name || 'Unknown'
+  }
+
+  // Get user avatar by ID
+  const getUserAvatar = (userId: string | null) => {
+    if (!userId) return null
+    const user = users.find(u => u.id === userId)
+    return user?.avatar
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div className="flex items-center gap-2 bg-white p-1 rounded-xl border border-slate-200 shadow-sm">
+          <Button
+            variant={viewMode === 'grid' ? 'default' : 'ghost'}
+            size="sm"
+            onClick={() => setViewMode('grid')}
+            className={cn("gap-2", viewMode === 'grid' && "bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-700 hover:to-purple-700")}
+          >
+            <LayoutGrid className="w-4 h-4" />
+            <span className="hidden sm:inline">Alur Kerja</span>
+          </Button>
+          <Button
+            variant={viewMode === 'table' ? 'default' : 'ghost'}
+            size="sm"
+            onClick={() => setViewMode('table')}
+            className={cn("gap-2", viewMode === 'table' && "bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-700 hover:to-purple-700")}
+          >
+            <List className="w-4 h-4" />
+            <span className="hidden sm:inline">Tabel</span>
+          </Button>
+        </div>
+
+        {canManageProject && (
+          <Button
+            onClick={() => setActiveView('create')}
+            className="gap-2 bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-700 hover:to-purple-700 shadow-md shadow-violet-500/20"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Tugas Baru</span>
+          </Button>
+        )}
+      </div>
+
+      {/* Content */}
+      {visibleProjects.length === 0 ? (
+        <Card className="p-12 text-center">
+          <CardContent className="pt-6">
+            <FolderKanban className="w-16 h-16 text-slate-300 mx-auto mb-4" />
+            <h3 className="text-xl font-semibold text-slate-800 mb-2">Belum ada proyek</h3>
+            <p className="text-slate-500">
+              {canManageProject
+                ? 'Mulai dengan membuat proyek perencanaan baru.'
+                : 'Belum ada tugas yang ditugaskan kepada Anda.'}
+            </p>
+          </CardContent>
+        </Card>
+      ) : viewMode === 'grid' ? (
+        <div className="grid grid-cols-1 gap-4">
+          {visibleProjects.map((project) => {
+            const { totalTasks, completedTasks, percentage, stageProgress, teamByStage } = getTaskProgress(project)
+            
+            return (
+              <Card 
+                key={project.id} 
+                className="group hover:shadow-lg transition-all cursor-pointer relative overflow-hidden"
+                onClick={() => { setSelectedProjectId(project.id); setActiveView('project_detail'); }}
+              >
+                {canManageProject && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="absolute top-3 right-3 bg-white/80 backdrop-blur-sm text-slate-400 hover:text-red-600 hover:bg-red-50 opacity-0 group-hover:opacity-100 transition-all z-10 h-7 w-7"
+                    onClick={(e) => { e.stopPropagation(); handleDeleteProject(project.id); }}
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </Button>
+                )}
+                
+                <CardContent className="p-0">
+                  {/* Project Header */}
+                  <div className="bg-gradient-to-r from-slate-900 via-blue-950 to-slate-900 px-4 py-3 text-white">
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1 min-w-0">
+                        <h3 className="font-bold text-lg truncate">{project.title}</h3>
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1">
+                          <span className="text-xs text-slate-400 flex items-center gap-1">
+                            <User className="w-3 h-3" />
+                            {project.requesterUnit}
+                          </span>
+                          {project.location && (
+                            <span className="text-xs text-slate-400 flex items-center gap-1">
+                              <MapPin className="w-3 h-3" />
+                              {project.location}
+                            </span>
+                          )}
+                          {project.executionTime && (
+                            <span className="text-xs text-slate-400 flex items-center gap-1">
+                              <Clock className="w-3 h-3" />
+                              {project.executionTime}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="text-right shrink-0 ml-3">
+                        <div className="text-2xl font-bold">{percentage}%</div>
+                        <div className="text-xs text-slate-400">{completedTasks}/{totalTasks} tugas</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Step Flow Progress */}
+                  <div className="bg-slate-50 px-4 py-4 border-b border-slate-200">
+                    <div className="flex items-center justify-between">
+                      {[1, 2, 3, 4].map((stage, idx) => {
+                        const gradient = STAGE_GRADIENTS[stage]
+                        const isCompleted = stage < project.currentStage
+                        const isCurrent = stage === project.currentStage
+                        const isPending = stage > project.currentStage
+                        const progress = stageProgress[stage]
+                        const stagePercent = progress.total > 0 
+                          ? Math.round((progress.completed / progress.total) * 100) 
+                          : 0
+                        
+                        return (
+                          <div key={stage} className="flex items-center flex-1">
+                            {/* Step Node */}
+                            <div className="flex flex-col items-center">
+                              {/* Circle */}
+                              <div className={cn(
+                                "w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold transition-all border-2",
+                                isCompleted ? "bg-green-500 border-green-500 text-white" :
+                                isCurrent ? cn(gradient.bg, "border-white shadow-lg text-white") :
+                                "bg-white border-slate-300 text-slate-400"
+                              )}>
+                                {isCompleted ? (
+                                  <CheckCircle2 className="w-5 h-5" />
+                                ) : (
+                                  stage
+                                )}
+                              </div>
+                              {/* Label */}
+                              <div className="mt-2 text-center">
+                                <div className={cn(
+                                  "text-xs font-semibold",
+                                  isCompleted ? "text-green-600" :
+                                  isCurrent ? gradient.text :
+                                  "text-slate-400"
+                                )}>
+                                  {STAGES[stage]}
+                                </div>
+                                <div className={cn(
+                                  "text-[10px] font-bold mt-0.5",
+                                  isCompleted ? "text-green-500" :
+                                  isCurrent ? gradient.text :
+                                  "text-slate-400"
+                                )}>
+                                  {stagePercent}%
+                                </div>
+                              </div>
+                            </div>
+                            
+                            {/* Connector Line */}
+                            {idx < 3 && (
+                              <div className={cn(
+                                "flex-1 h-0.5 mx-2 rounded-full",
+                                isCompleted ? "bg-green-500" :
+                                isCurrent ? "bg-gradient-to-r from-slate-300 to-slate-300" :
+                                "bg-slate-300"
+                              )}></div>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Team Members by Stage */}
+                  <div className="p-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+                      {[1, 2, 3, 4].map((stage) => {
+                        const members = teamByStage[stage]
+                        const progress = stageProgress[stage]
+                        const gradient = STAGE_GRADIENTS[stage]
+                        const isCompleted = stage < project.currentStage
+                        const isCurrent = stage === project.currentStage
+                        const isPending = stage > project.currentStage
+                        
+                        return (
+                          <div 
+                            key={stage}
+                            className={cn(
+                              "rounded-xl border-2 overflow-hidden transition-all",
+                              isCompleted ? "border-green-300 bg-gradient-to-b from-green-50 to-white" :
+                              isCurrent ? cn("border-2", gradient.border, "bg-gradient-to-b", gradient.from, gradient.to) :
+                              "border-slate-200 bg-gradient-to-b from-slate-50 to-white opacity-60"
+                            )}
+                          >
+                            {/* Team Members Only - No Stage Header */}
+                            <div className="p-2 space-y-1.5 min-h-[80px]">
+                              {members.length === 0 ? (
+                                <div className="text-xs text-slate-400 text-center py-4">
+                                  Tidak ada petugas
+                                </div>
+                              ) : (
+                                members.map((member, idx) => {
+                                  const avatar = getUserAvatar(member.userId)
+                                  const isTaskCompleted = member.status === 'completed'
+                                  const isTaskInProgress = member.status === 'in_progress'
+                                  const isLocked = isPending
+                                  
+                                  return (
+                                    <div 
+                                      key={idx}
+                                      className={cn(
+                                        "flex items-center gap-2 px-2 py-1.5 rounded-lg transition-all",
+                                        isTaskCompleted ? "bg-green-50" :
+                                        isLocked ? "bg-slate-100" :
+                                        "bg-white border border-slate-200"
+                                      )}
+                                    >
+                                      {/* Avatar */}
+                                      {avatar ? (
+                                        <img 
+                                          src={avatar} 
+                                          alt={member.name}
+                                          className="w-7 h-7 rounded-full object-cover border-2 border-white shadow-sm"
+                                        />
+                                      ) : (
+                                        <div className={cn(
+                                          "w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white",
+                                          isTaskCompleted ? "bg-green-500" :
+                                          isTaskInProgress ? "bg-orange-500" :
+                                          "bg-slate-400"
+                                        )}>
+                                          {member.name.charAt(0).toUpperCase()}
+                                        </div>
+                                      )}
+                                      
+                                      {/* Name & Role */}
+                                      <div className="flex-1 min-w-0">
+                                        <div className={cn(
+                                          "text-xs font-semibold truncate",
+                                          isTaskCompleted ? "text-green-700" :
+                                          isLocked ? "text-slate-400" :
+                                          "text-slate-700"
+                                        )}>
+                                          {member.name}
+                                        </div>
+                                        <div className="text-[10px] text-slate-500 truncate">
+                                          {member.role}
+                                        </div>
+                                      </div>
+                                      
+                                      {/* Status Icon */}
+                                      <div className="shrink-0">
+                                        {isTaskCompleted ? (
+                                          <CheckCircle2 className="w-5 h-5 text-orange-500" />
+                                        ) : (
+                                          <XCircle className="w-5 h-5 text-violet-500" />
+                                        )}
+                                      </div>
+                                    </div>
+                                  )
+                                })
+                              )}
+                            </div>
+
+                            {/* Stage Progress Bar */}
+                            <div className="px-3 pb-2">
+                              <Progress 
+                                value={progress.total > 0 ? Math.round((progress.completed / progress.total) * 100) : 0} 
+                                className={cn(
+                                  "h-1.5",
+                                  isCompleted ? "[&>div]:bg-green-500" :
+                                  isCurrent ? `[&>div]:${gradient.bg}` :
+                                  "[&>div]:bg-slate-400"
+                                )} 
+                              />
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )
+          })}
+        </div>
+      ) : (
+        <Card>
+          <Table>
+            <TableHeader>
+              <TableRow className="bg-slate-50">
+                <TableHead className="font-semibold text-xs">Judul Kegiatan</TableHead>
+                <TableHead className="font-semibold text-xs">Pemohon</TableHead>
+                <TableHead className="font-semibold text-xs">Tempat</TableHead>
+                <TableHead className="font-semibold text-xs">Waktu</TableHead>
+                <TableHead className="font-semibold text-xs">Tahap</TableHead>
+                <TableHead className="font-semibold text-xs">Progress</TableHead>
+                <TableHead className="font-semibold text-center text-xs">T1</TableHead>
+                <TableHead className="font-semibold text-center text-xs">T2</TableHead>
+                <TableHead className="font-semibold text-center text-xs">T3</TableHead>
+                <TableHead className="font-semibold text-center text-xs">T4</TableHead>
+                {canManageProject && <TableHead className="font-semibold text-right text-xs">Aksi</TableHead>}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {visibleProjects.map((project) => {
+                const { percentage, stageProgress } = getTaskProgress(project)
+                const currentGradient = STAGE_GRADIENTS[project.currentStage]
+                
+                return (
+                  <TableRow
+                    key={project.id}
+                    className="cursor-pointer hover:bg-slate-50/50 group"
+                    onClick={() => { setSelectedProjectId(project.id); setActiveView('project_detail'); }}
+                  >
+                    <TableCell>
+                      <div className="font-semibold text-slate-800 group-hover:text-slate-600 text-sm">
+                        {project.title}
+                      </div>
+                      <div className="text-xs text-slate-400 font-mono">ID: {project.id.slice(0, 8)}...</div>
+                    </TableCell>
+                    <TableCell className="text-sm text-slate-600">{project.requesterUnit}</TableCell>
+                    <TableCell className="text-sm text-slate-600">{project.location || '-'}</TableCell>
+                    <TableCell className="text-sm text-slate-600">{project.executionTime || '-'}</TableCell>
+                    <TableCell>
+                      <Badge className={cn("text-xs", currentGradient.bg, "text-white border-0")}>
+                        T{project.currentStage}: {STAGES[project.currentStage]}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <Progress value={percentage} className="h-1.5 w-16" />
+                        <span className="text-xs font-bold text-slate-700">{percentage}%</span>
+                      </div>
+                    </TableCell>
+                    {[1, 2, 3, 4].map((stage) => {
+                      const progress = stageProgress[stage]
+                      const stagePercent = progress.total > 0 
+                        ? Math.round((progress.completed / progress.total) * 100) 
+                        : 0
+                      const gradient = STAGE_GRADIENTS[stage]
+                      const isCompleted = stage < project.currentStage
+                      const isCurrent = stage === project.currentStage
+                      
+                      return (
+                        <TableCell key={stage} className="text-center">
+                          <div className={cn(
+                            "inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold",
+                            isCompleted ? "bg-green-100 text-green-700" :
+                            isCurrent ? cn(gradient.from, gradient.text) :
+                            "bg-slate-100 text-slate-500"
+                          )}>
+                            {stagePercent}%
+                          </div>
+                        </TableCell>
+                      )
+                    })}
+                    {canManageProject && (
+                      <TableCell className="text-right">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="text-slate-400 hover:text-red-600 hover:bg-red-50 opacity-0 group-hover:opacity-100 h-7 w-7"
+                          onClick={(e) => { e.stopPropagation(); handleDeleteProject(project.id); }}
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </Button>
+                      </TableCell>
+                    )}
+                  </TableRow>
+                )
+              })}
+            </TableBody>
+          </Table>
+        </Card>
+      )}
+    </div>
+  )
+}
