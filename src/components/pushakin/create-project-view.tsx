@@ -202,8 +202,7 @@ export function CreateProjectView() {
           customOutput: kebutuhanOutput.includes('Lainnya') ? outputLainnya : '',
           managerId: currentUser?.id,
           tasks,
-          driveFolders: generatedFolders,
-          sendEmailNotif
+          driveFolders: generatedFolders
         })
       })
 
@@ -252,7 +251,8 @@ export function CreateProjectView() {
       } else {
         showAlert('Gagal membuat proyek. Silakan coba lagi.')
       }
-    } catch {
+    } catch (error) {
+      console.error('[CREATE PROJECT] Error:', error)
       showAlert('Terjadi kesalahan. Silakan coba lagi.')
     } finally {
       setIsCreatingProject(false)

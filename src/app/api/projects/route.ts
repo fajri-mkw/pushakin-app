@@ -84,11 +84,8 @@ export async function POST(request: NextRequest) {
       outputNeeds, customOutput, managerId, tasks, driveFolders
     } = body
     
-    const projectId = `PRJ-${Date.now().toString().slice(-6)}`
-    
     const project = await db.project.create({
       data: {
-        id: projectId,
         title,
         description,
         requesterUnit,
