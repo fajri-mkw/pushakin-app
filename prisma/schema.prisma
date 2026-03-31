@@ -1,0 +1,160 @@
+// Prisma Schema - PostgreSQL (Neon)
+// Pushakin Flows - Media Workflow Management System
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  name      String
+  email     String   @unique
+  password  String   @default("$2a$10$placeholder")
+  whatsapp  String?
+  avatar    String?
+  role      String   @default("Reporter")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tasksAsAssignee   Task[]
+  notifications     Notification[]
+  projectsAsManager Project[]
+  suratTugas        SuratTugas[]
+  sops              SOP[]
+
+  @@map("users")
+}
+
+model Project {
+  id              String   @id @default(cuid())
+  title           String
+  description     String
+  requesterUnit   String
+  location        String?
+  executionTime   String?
+  picName         String?
+  picWhatsApp     String?
+  activityTypes   String
+  customActivity  String?
+  outputNeeds     String
+  customOutput    String?
+  currentStage    Int      @default(1)
+  managerId       String
+  publicToken     String?  @unique
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  manager      User           @relation(fields: [managerId], references: [id], onDelete: Cascade)
+  tasks        Task[]
+  driveFolders DriveFolder[]
+  notifications Notification[]
+  suratTugas   SuratTugas[]
+
+  @@map("projects")
+}
+
+model Task {
+  id          String   @id @default(cuid())
+  role        String
+  stage       Int
+  status      String   @default("pending")
+  data        String?
+  assignedTo  String
+  projectId   String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  project  Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  assignee User    @relation(fields: [assignedTo], references: [id], onDelete: Cascade)
+
+  @@map("tasks")
+}
+
+model DriveFolder {
+  id             String  @id @default(cuid())
+  folderId       String
+  name           String
+  description    String?
+  link           String?
+  assignedRoles  String?
+  color          String?
+  bgColor        String?
+  borderColor    String?
+  projectId      String
+  parentFolderId String?
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@map("drive_folders")
+}
+
+model Notification {
+  id         String   @id @default(cuid())
+  message    String
+  projectId  String?
+  targetView String   @default("project_detail")
+  read       Boolean  @default(false)
+  userId     String
+  createdAt  DateTime @default(now())
+
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  @@map("notifications")
+}
+
+model SuratTugas {
+  id         String   @id @default(cuid())
+  nomorSurat String   @unique
+  projectId  String
+  userId     String
+  role       String
+  stage      Int
+  status     String   @default("active")
+  read       Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("surat_tugas")
+}
+
+model Settings {
+  id                    String   @id @default("main")
+  driveAutoCreate       Boolean  @default(false)
+  driveParentFolderId   String?
+  driveSharedDriveId    String?
+  driveServiceAccountKey String?
+  driveApiKey           String?
+  maintenanceMode       Boolean  @default(false)
+  maintenanceMessage    String?
+  updatedAt             DateTime @updatedAt
+
+  @@map("settings")
+}
+
+model SOP {
+  id             String   @id @default(cuid())
+  title          String
+  content        String
+  type           String   @default("SOP")
+  displayMode    String   @default("text")
+  files          String?
+  slideshowSpeed Int      @default(5000)
+  published      Boolean  @default(false)
+  order          Int      @default(0)
+  authorId       String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  author User @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@map("sops")
+}
