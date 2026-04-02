@@ -319,12 +319,12 @@ export function AnnouncementView() {
               {getTabIcon(activeTab)}
             </div>
             <h3 className="text-lg font-semibold text-stone-800">
-              {isAdmin ? `Belum ada ${activeTab}` : 'Belum ada pengumuman'}
+              {isAdmin ? `Belum ada ${activeTab}` : `Belum ada ${activeTab.toLowerCase()}`}
             </h3>
             <p className="text-stone-500 mt-2 mb-4">
               {isAdmin
                 ? `Klik tombol "Buat Baru" untuk membuat ${activeTab.toLowerCase()} pertama`
-                : 'Belum ada pengumuman yang dipublikasikan oleh Admin.'}
+                : `Belum ada ${activeTab.toLowerCase()} yang dipublikasikan oleh Admin.`}
             </p>
             {isAdmin && (
               <Button onClick={openCreateDialog} variant="outline">
@@ -473,10 +473,10 @@ export function AnnouncementView() {
           )} />
           <div>
             <h1 className="text-2xl font-bold text-stone-800">
-              {isAdmin ? 'Manajemen Konten' : 'Pengumuman'}
+              {isAdmin ? 'Manajemen Konten' : 'Informasi'}
             </h1>
             <p className="text-stone-500 text-sm">
-              {isAdmin ? 'Kelola Pengumuman, SOP, dan Panduan' : 'Informasi dan pengumuman terbaru dari Admin'}
+              {isAdmin ? 'Kelola Pengumuman, SOP, dan Panduan' : 'Pengumuman, SOP, dan Panduan terbaru dari Admin'}
             </p>
           </div>
         </div>
@@ -491,32 +491,26 @@ export function AnnouncementView() {
         )}
       </div>
 
-      {/* Tabs - only show for Admin */}
-      {isAdmin ? (
-        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as typeof activeTab)}>
-          <TabsList className="grid w-full grid-cols-3 max-w-md">
-            <TabsTrigger value="Pengumuman" className="gap-2">
-              <Megaphone className="w-4 h-4" />
-              Pengumuman
-            </TabsTrigger>
-            <TabsTrigger value="SOP" className="gap-2">
-              <FileText className="w-4 h-4" />
-              SOP
-            </TabsTrigger>
-            <TabsTrigger value="Panduan" className="gap-2">
-              <BookOpen className="w-4 h-4" />
-              Panduan
-            </TabsTrigger>
-          </TabsList>
-          <TabsContent value={activeTab} className="mt-6">
-            {renderItems()}
-          </TabsContent>
-        </Tabs>
-      ) : (
-        <div className="mt-6">
+      {/* Tabs - shown to ALL users (Admin sees management UI, non-Admin sees published only) */}
+      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as typeof activeTab)}>
+        <TabsList className="grid w-full grid-cols-3 max-w-md">
+          <TabsTrigger value="Pengumuman" className="gap-2">
+            <Megaphone className="w-4 h-4" />
+            Pengumuman
+          </TabsTrigger>
+          <TabsTrigger value="SOP" className="gap-2">
+            <FileText className="w-4 h-4" />
+            SOP
+          </TabsTrigger>
+          <TabsTrigger value="Panduan" className="gap-2">
+            <BookOpen className="w-4 h-4" />
+            Panduan
+          </TabsTrigger>
+        </TabsList>
+        <TabsContent value={activeTab} className="mt-6">
           {renderItems()}
-        </div>
-      )}
+        </TabsContent>
+      </Tabs>
 
       {/* File Preview Dialog */}
       <Dialog open={!!previewFile} onOpenChange={(open) => { if (!open) setPreviewFile(null) }}>

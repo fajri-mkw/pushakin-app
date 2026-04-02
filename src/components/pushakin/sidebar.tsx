@@ -31,7 +31,7 @@ export function Sidebar() {
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'overview', label: 'Statistik & Progress', icon: BarChart2 },
     { id: 'inbox', label: 'Inbox', icon: Inbox, badge: unreadSuratCount > 0 ? unreadSuratCount : undefined },
-    { id: 'announcements', label: 'Pengumuman', icon: Megaphone },
+    { id: 'announcements', label: currentUser?.role === 'Admin' ? 'Manajemen Konten' : 'Informasi', icon: Megaphone },
     ...(canViewReports ? [{ id: 'reports', label: 'Laporan Kegiatan', icon: FileText, badge: completedCount > 0 ? completedCount : undefined }] : []),
     { id: 'profile', label: 'Profil Saya', icon: UserCircle },
     ...(canManageUsers ? [{ id: 'users', label: 'Manajemen User', icon: Users }] : []),
