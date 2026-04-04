@@ -152,18 +152,25 @@ export function CreateProjectView() {
             const driveData = await driveResponse.json()
             if (driveData.success) {
               // Map real Google Drive folders
-              generatedFolders = driveData.folders.map((f: { folderId: string; name: string; webViewLink: string }) => {
+              generatedFolders = driveData.folders.map((f: { folderId: string; name: string; webViewLink: string; parentFolderId?: string }) => {
                 const optionInfo = FOLDER_OPTIONS.find(opt => opt.id === f.folderId)
-                const assignedToFolder = (folderRoles[f.folderId] || []).filter((r: string) => rolesToAssign.includes(r))
+                const isSubfolder = !!f.parentFolderId
+                const parentOptionInfo = isSubfolder ? FOLDER_OPTIONS.find(opt => opt.id === f.parentFolderId) : null
+                const assignedToFolder = isSubfolder 
+                  ? [] // Subfolders don't get role-based assignment, they're user-specific
+                  : (folderRoles[f.folderId] || []).filter((r: string) => rolesToAssign.includes(r))
                 return {
                   folderId: f.folderId,
                   name: f.name,
-                  desc: optionInfo?.desc || '',
-                  color: optionInfo?.color || 'text-stone-600',
-                  bg: optionInfo?.bg || 'bg-stone-100',
-                  border: optionInfo?.border || 'border-stone-200',
+                  desc: isSubfolder 
+                    ? `Subfolder untuk ${f.name}` 
+                    : (optionInfo?.desc || ''),
+                  color: parentOptionInfo?.color || optionInfo?.color || 'text-stone-600',
+                  bg: parentOptionInfo?.bg || optionInfo?.bg || 'bg-stone-100',
+                  border: parentOptionInfo?.border || optionInfo?.border || 'border-stone-200',
                   link: f.webViewLink,
-                  assignedRoles: assignedToFolder
+                  assignedRoles: isSubfolder ? [] : assignedToFolder,
+                  parentFolderId: f.parentFolderId || undefined
                 }
               })
               console.log('[DRIVE] Created folders:', driveData.mainFolder)

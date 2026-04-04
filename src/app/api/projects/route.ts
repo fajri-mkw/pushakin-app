@@ -63,7 +63,8 @@ export async function GET(request: NextRequest) {
         bg: f.bgColor || '',
         border: f.borderColor || '',
         link: f.link || '',
-        assignedRoles: JSON.parse(f.assignedRoles || '[]')
+        assignedRoles: JSON.parse(f.assignedRoles || '[]'),
+        parentFolderId: f.parentFolderId || null
       }))
     }))
     
@@ -178,7 +179,8 @@ export async function POST(request: NextRequest) {
         bg: f.bgColor || '',
         border: f.borderColor || '',
         link: f.link || '',
-        assignedRoles: JSON.parse(f.assignedRoles || '[]')
+        assignedRoles: JSON.parse(f.assignedRoles || '[]'),
+        parentFolderId: f.parentFolderId || null
       }))
     })
   } catch (error) {

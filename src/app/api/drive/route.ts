@@ -8,6 +8,7 @@ interface CreatedFolder {
   name: string
   webViewLink: string
   folderId: string
+  parentFolderId?: string
 }
 
 // Interface for assigned users
@@ -136,7 +137,8 @@ async function createUserSubfolders(
     
     createdFolders.push({
       ...userSubfolder,
-      folderId: `${parentFolderType}-${user.role.toLowerCase().replace(/\s*&\s*/g, '-')}-${user.userId}`
+      folderId: `${parentFolderType}-${user.role.toLowerCase().replace(/\s*&\s*/g, '-')}-${user.userId}`,
+      parentFolderId: parentFolderType
     })
     
     console.log(`[DRIVE] Created user subfolder "${subfolderName}" inside ${parentFolderType} for ${user.userName} (${user.role})`)
