@@ -46,6 +46,13 @@ export interface Task {
   data: TaskData
 }
 
+export interface UserFolderAccess {
+  userId: string
+  userName: string
+  download: boolean
+  upload: boolean
+}
+
 export interface DriveFolder {
   id: string
   folderId: string
@@ -56,6 +63,7 @@ export interface DriveFolder {
   border: string
   link: string
   assignedRoles: string[]
+  assignedUsers: UserFolderAccess[]
   parentFolderId?: string | null
 }
 

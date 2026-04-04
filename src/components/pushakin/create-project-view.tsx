@@ -6,13 +6,15 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Checkbox } from '@/components/ui/checkbox'
-import { useAppStore, ROLES, ROLE_CONFIG, FOLDER_OPTIONS, STAGES } from '@/lib/store'
+import { useAppStore, ROLES, ROLE_CONFIG, FOLDER_OPTIONS, STAGES, UserFolderAccess } from '@/lib/store'
 import { 
   Rocket, 
   Users, 
   Folder, 
   Loader2,
-  FileText
+  FileText,
+  Download,
+  Upload
 } from 'lucide-react'
 import { useState, useEffect } from 'react'
 import { cn } from '@/lib/utils'
@@ -32,7 +34,7 @@ export function CreateProjectView() {
   const [picWhatsApp, setPicWhatsApp] = useState('')
   const [selectedRoles, setSelectedRoles] = useState<Record<string, boolean>>({})
   const [selectedFolders, setSelectedFolders] = useState(['raw', 'revised', 'final'])
-  const [folderRoles, setFolderRoles] = useState<Record<string, string[]>>({})
+  const [folderUserAccess, setFolderUserAccess] = useState<Record<string, Record<string, { download: boolean; upload: boolean }>>>({})
   const [jenisKegiatan, setJenisKegiatan] = useState<string[]>([])
   const [kebutuhanOutput, setKebutuhanOutput] = useState<string[]>([])
   const [kegiatanLainnya, setKegiatanLainnya] = useState('')
@@ -56,16 +58,57 @@ export function CreateProjectView() {
     }
   }
 
-  const toggleRoleForFolder = (folderId: string, role: string) => {
-    setFolderRoles(prev => {
-      const currentRoles = prev[folderId] || []
-      if (currentRoles.includes(role)) {
-        return { ...prev, [folderId]: currentRoles.filter(r => r !== role) }
-      } else {
-        return { ...prev, [folderId]: [...currentRoles, role] }
-      }
+  const toggleUserAccess = (folderId: string, userId: string, type: 'download' | 'upload') => {
+    setFolderUserAccess(prev => {
+      const folderAccess = prev[folderId] || {}
+      const userAccess = folderAccess[userId] || { download: false, upload: false }
+      userAccess[type] = !userAccess[type]
+      return { ...prev, [folderId]: { ...folderAccess, [userId]: userAccess } }
     })
   }
+
+  // Get list of assigned users with their roles
+  const assignedUsers = Object.keys(selectedRoles)
+    .filter(k => selectedRoles[k])
+    .map(role => {
+      const user = users.find(u => u.role === role)
+      return user ? { id: user.id, name: user.name, role } : null
+    })
+    .filter(Boolean) as Array<{ id: string; name: string; role: string }>
+
+  // Auto-assign access when roles change
+  useEffect(() => {
+    const autoAccess: Record<string, Record<string, { download: boolean; upload: boolean }>> = {}
+    const stageToUploadFolders: Record<number, string[]> = {
+      1: ['raw', 'desain', 'lainnya'],
+      2: ['revised', 'lainnya'],
+      3: ['final', 'revised', 'lainnya'],
+      4: ['final', 'revised', 'lainnya']
+    }
+    const stageToDownloadFolders: Record<number, string[]> = {
+      1: ['raw', 'desain', 'lainnya'],
+      2: ['raw', 'desain', 'lainnya'],
+      3: ['revised', 'desain', 'lainnya'],
+      4: ['final', 'revised', 'lainnya']
+    }
+
+    assignedUsers.forEach(user => {
+      const config = ROLE_CONFIG[user.role]
+      if (!config) return
+      const stage = config.stage
+      const uploadFolders = stageToUploadFolders[stage] || []
+      const downloadFolders = stageToDownloadFolders[stage] || []
+
+      selectedFolders.forEach(folderId => {
+        if (!autoAccess[folderId]) autoAccess[folderId] = {}
+        autoAccess[folderId][user.id] = {
+          download: downloadFolders.includes(folderId),
+          upload: uploadFolders.includes(folderId)
+        }
+      })
+    })
+    setFolderUserAccess(autoAccess)
+  }, [selectedRoles, selectedFolders])
 
   // Fetch Drive settings on mount
   useEffect(() => {
@@ -120,6 +163,7 @@ export function CreateProjectView() {
         border: string
         link: string
         assignedRoles: string[]
+        assignedUsers: UserFolderAccess[]
         parentFolderId?: string
       }> = []
 
@@ -154,7 +198,16 @@ export function CreateProjectView() {
               // Map real Google Drive folders
               generatedFolders = driveData.folders.map((f: { folderId: string; name: string; webViewLink: string }) => {
                 const optionInfo = FOLDER_OPTIONS.find(opt => opt.id === f.folderId)
-                const assignedToFolder = (folderRoles[f.folderId] || []).filter((r: string) => rolesToAssign.includes(r))
+                const folderAccess = folderUserAccess[f.folderId] || {}
+                const assignedUsersList: UserFolderAccess[] = Object.entries(folderAccess).map(([userId, access]) => {
+                  const u = users.find(usr => usr.id === userId)
+                  return {
+                    userId,
+                    userName: u?.name || '',
+                    download: access.download,
+                    upload: access.upload
+                  }
+                })
                 return {
                   folderId: f.folderId,
                   name: f.name,
@@ -163,7 +216,8 @@ export function CreateProjectView() {
                   bg: optionInfo?.bg || 'bg-stone-100',
                   border: optionInfo?.border || 'border-stone-200',
                   link: f.webViewLink,
-                  assignedRoles: assignedToFolder
+                  assignedRoles: rolesToAssign,
+                  assignedUsers: assignedUsersList
                 }
               })
               console.log('[DRIVE] Created folders:', driveData.mainFolder)
@@ -273,6 +327,7 @@ export function CreateProjectView() {
       border: string
       link: string
       assignedRoles: string[]
+      assignedUsers: UserFolderAccess[]
       parentFolderId?: string
     }> = []
     
@@ -310,6 +365,7 @@ export function CreateProjectView() {
             border: 'border-stone-200',
             link: `https://drive.google.com/drive/folders/mock-${parentFolderId}-${task.role.toLowerCase()}-${idx}-${Date.now()}`,
             assignedRoles: [task.role],
+            assignedUsers: [{ userId: task.assignedTo, userName: assignedUser.name, download: true, upload: true }],
             parentFolderId: parentFolderId
           })
         }
@@ -318,100 +374,65 @@ export function CreateProjectView() {
     
     folderIds.forEach(folderId => {
       const optionInfo = FOLDER_OPTIONS.find(opt => opt.id === folderId)
-      const assignedToFolder = (folderRoles[folderId] || []).filter(r => rolesToAssign.includes(r))
+      const folderAccess = folderUserAccess[folderId] || {}
+      const assignedUsersList: UserFolderAccess[] = Object.entries(folderAccess).map(([userId, access]) => {
+        const u = users.find(usr => usr.id === userId)
+        return { userId, userName: u?.name || '', download: access.download, upload: access.upload }
+      })
       const nowTs = Date.now()
       
       if (folderId === 'raw' && stage1Tasks.length > 0) {
-        // Create main RAW folder
         folders.push({
-          folderId: 'raw',
-          name: optionInfo?.name || 'RAW FOLDER',
-          desc: optionInfo?.desc || '',
-          color: optionInfo?.color || 'text-stone-600',
-          bg: optionInfo?.bg || 'bg-stone-100',
-          border: optionInfo?.border || 'border-stone-200',
-          link: `https://drive.google.com/drive/folders/mock-raw-main-${nowTs}`,
-          assignedRoles: []
+          folderId: 'raw', name: optionInfo?.name || 'RAW FOLDER', desc: optionInfo?.desc || '',
+          color: optionInfo?.color || 'text-stone-600', bg: optionInfo?.bg || 'bg-stone-100',
+          border: optionInfo?.border || 'border-stone-200', link: `https://drive.google.com/drive/folders/mock-raw-main-${nowTs}`,
+          assignedRoles: [], assignedUsers: assignedUsersList
         })
-        // Create Stage 1 user-specific subfolders inside RAW
         generateSubfolders('raw', 'RAW', stage1Tasks, nowTs)
       } else if (folderId === 'revised' && stage2Tasks.length > 0) {
-        // Create main REVISED folder
         folders.push({
-          folderId: 'revised',
-          name: optionInfo?.name || 'REVISED FOLDER',
-          desc: optionInfo?.desc || '',
-          color: optionInfo?.color || 'text-orange-600',
-          bg: optionInfo?.bg || 'bg-orange-50',
-          border: optionInfo?.border || 'border-orange-200',
-          link: `https://drive.google.com/drive/folders/mock-revised-main-${nowTs}`,
-          assignedRoles: []
+          folderId: 'revised', name: optionInfo?.name || 'REVISED FOLDER', desc: optionInfo?.desc || '',
+          color: optionInfo?.color || 'text-orange-600', bg: optionInfo?.bg || 'bg-orange-50',
+          border: optionInfo?.border || 'border-orange-200', link: `https://drive.google.com/drive/folders/mock-revised-main-${nowTs}`,
+          assignedRoles: [], assignedUsers: assignedUsersList
         })
-        // Create Stage 2 user-specific subfolders inside REVISED
         generateSubfolders('revised', 'REVISED', stage2Tasks, nowTs)
       } else if (folderId === 'desain' && graphicDesignerTasks.length > 0) {
-        // Create main DESAIN folder
         folders.push({
-          folderId: 'desain',
-          name: optionInfo?.name || 'DESAIN FOLDER',
-          desc: optionInfo?.desc || '',
-          color: optionInfo?.color || 'text-blue-600',
-          bg: optionInfo?.bg || 'bg-blue-50',
-          border: optionInfo?.border || 'border-blue-200',
-          link: `https://drive.google.com/drive/folders/mock-desain-main-${nowTs}`,
-          assignedRoles: []
+          folderId: 'desain', name: optionInfo?.name || 'DESAIN FOLDER', desc: optionInfo?.desc || '',
+          color: optionInfo?.color || 'text-blue-600', bg: optionInfo?.bg || 'bg-blue-50',
+          border: optionInfo?.border || 'border-blue-200', link: `https://drive.google.com/drive/folders/mock-desain-main-${nowTs}`,
+          assignedRoles: [], assignedUsers: assignedUsersList
         })
-        // Create Graphic Designer subfolders inside DESAIN
         generateSubfolders('desain', 'DESAIN', graphicDesignerTasks, nowTs)
       } else if (folderId === 'final') {
-        // FINAL PRODUCT - create main folder
         folders.push({
-          folderId: 'final',
-          name: optionInfo?.name || 'FINAL PRODUCT',
-          desc: optionInfo?.desc || '',
-          color: optionInfo?.color || 'text-green-600',
-          bg: optionInfo?.bg || 'bg-green-50',
-          border: optionInfo?.border || 'border-green-200',
-          link: `https://drive.google.com/drive/folders/mock-final-main-${nowTs}`,
-          assignedRoles: []
+          folderId: 'final', name: optionInfo?.name || 'FINAL PRODUCT', desc: optionInfo?.desc || '',
+          color: optionInfo?.color || 'text-green-600', bg: optionInfo?.bg || 'bg-green-50',
+          border: optionInfo?.border || 'border-green-200', link: `https://drive.google.com/drive/folders/mock-final-main-${nowTs}`,
+          assignedRoles: [], assignedUsers: assignedUsersList
         })
-        // Create Reviewer subfolders inside FINAL (for revision uploads)
-        if (reviewerTasks.length > 0) {
-          generateSubfolders('final', 'FINAL', reviewerTasks, nowTs)
-        }
+        if (reviewerTasks.length > 0) generateSubfolders('final', 'FINAL', reviewerTasks, nowTs)
       } else if (folderId === 'lainnya' && lainnyaTasks.length > 0) {
-        // LAINNYA - create main folder
         folders.push({
-          folderId: 'lainnya',
-          name: optionInfo?.name || 'LAINNYA',
-          desc: optionInfo?.desc || '',
-          color: optionInfo?.color || 'text-purple-600',
-          bg: optionInfo?.bg || 'bg-purple-50',
-          border: optionInfo?.border || 'border-purple-200',
-          link: `https://drive.google.com/drive/folders/mock-lainnya-main-${nowTs}`,
-          assignedRoles: []
+          folderId: 'lainnya', name: optionInfo?.name || 'LAINNYA', desc: optionInfo?.desc || '',
+          color: optionInfo?.color || 'text-purple-600', bg: optionInfo?.bg || 'bg-purple-50',
+          border: optionInfo?.border || 'border-purple-200', link: `https://drive.google.com/drive/folders/mock-lainnya-main-${nowTs}`,
+          assignedRoles: [], assignedUsers: assignedUsersList
         })
-        // Create Stage 1 staff subfolders inside LAINNYA
         generateSubfolders('lainnya', 'LAINNYA', lainnyaTasks, nowTs)
       } else {
-        // Other folders stay as-is with no subfolders
         folders.push({
-          folderId,
-          name: optionInfo?.name || `Folder ${folderId}`,
-          desc: optionInfo?.desc || '',
-          color: optionInfo?.color || 'text-stone-600',
-          bg: optionInfo?.bg || 'bg-stone-100',
-          border: optionInfo?.border || 'border-stone-200',
-          link: `https://drive.google.com/drive/folders/mock-${folderId}-${nowTs}`,
-          assignedRoles: assignedToFolder
+          folderId, name: optionInfo?.name || `Folder ${folderId}`, desc: optionInfo?.desc || '',
+          color: optionInfo?.color || 'text-stone-600', bg: optionInfo?.bg || 'bg-stone-100',
+          border: optionInfo?.border || 'border-stone-200', link: `https://drive.google.com/drive/folders/mock-${folderId}-${nowTs}`,
+          assignedRoles: rolesToAssign, assignedUsers: assignedUsersList
         })
       }
     })
     
     return folders
   }
-
-  const activeRolesForAssignment = Object.keys(selectedRoles).filter(k => selectedRoles[k])
 
   return (
     <Card className="max-w-4xl mx-auto overflow-hidden">
@@ -630,7 +651,7 @@ export function CreateProjectView() {
             </div>
           </div>
 
-          {/* Folder Selection */}
+          {/* Folder Selection + Per-User Access Control */}
           <div className="bg-indigo-50/40 border border-indigo-100 rounded-2xl p-6">
             <div className="flex items-center gap-3 mb-4 text-indigo-900">
               <Checkbox checked={driveAutoCreate} disabled />
@@ -651,68 +672,115 @@ export function CreateProjectView() {
               </p>
             )}
             <p className="text-sm text-indigo-700/80 mb-4 ml-8">
-              Pilih struktur folder dan tentukan user mana saja yang memiliki akses:
+              Pilih folder dan atur akses Download & Upload untuk setiap anggota tim:
             </p>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 ml-8">
-              {FOLDER_OPTIONS.map(folder => {
-                const isSelected = selectedFolders.includes(folder.id)
-                return (
-                  <div
-                    key={folder.id}
-                    className={cn(
-                      "flex flex-col p-4 rounded-xl border-2 transition-all",
-                      isSelected 
-                        ? "bg-white border-indigo-500 shadow-sm" 
-                        : "bg-stone-50/50 border-transparent hover:border-indigo-200"
-                    )}
-                  >
-                    <label className="flex items-start gap-3 cursor-pointer w-full">
-                      <Checkbox
-                        checked={isSelected}
-                        onCheckedChange={() => toggleFolder(folder.id)}
-                      />
-                      <div className="flex-1">
-                        <div className="text-[10px] font-bold text-stone-400 uppercase tracking-wider">
-                          {folder.title}
-                        </div>
-                        <div className="text-sm font-bold text-stone-800">{folder.name}</div>
-                        <div className="text-xs text-stone-500 mt-1">{folder.desc}</div>
-                      </div>
-                    </label>
 
-                    {isSelected && activeRolesForAssignment.length > 0 && (
-                      <div className="mt-3 pt-3 border-t border-stone-100 w-full ml-7 pl-0.5">
-                        <p className="text-[10px] font-bold text-indigo-600/70 mb-2 uppercase tracking-wider">
-                          Akses Untuk:
-                        </p>
-                        <div className="flex flex-wrap gap-1.5">
-                          {activeRolesForAssignment.map(role => {
-                            const isRoleAssigned = (folderRoles[folder.id] || []).includes(role)
-                            return (
-                              <Button
-                                key={role}
-                                type="button"
-                                variant="ghost"
-                                size="sm"
-                                className={cn(
-                                  "h-auto px-2 py-1 text-[10px]",
-                                  isRoleAssigned 
-                                    ? "bg-indigo-600 text-white shadow-sm" 
-                                    : "bg-stone-100 text-stone-500 border border-stone-200"
-                                )}
-                                onClick={(e) => { e.preventDefault(); toggleRoleForFolder(folder.id, role); }}
-                              >
-                                {role}
-                              </Button>
-                            )
-                          })}
+            {assignedUsers.length === 0 ? (
+              <div className="text-sm text-stone-500 text-center py-6 ml-8">
+                <Users className="w-8 h-8 mx-auto mb-2 text-stone-300" />
+                Pilih minimal satu peran di bagian Pembagian Tim di atas
+              </div>
+            ) : (
+              <div className="space-y-4 ml-8">
+                {FOLDER_OPTIONS.map(folder => {
+                  const isSelected = selectedFolders.includes(folder.id)
+                  const folderAccess = folderUserAccess[folder.id] || {}
+
+                  return (
+                    <div
+                      key={folder.id}
+                      className={cn(
+                        "rounded-xl border-2 transition-all overflow-hidden",
+                        isSelected 
+                          ? "bg-white border-indigo-500 shadow-sm" 
+                          : "bg-stone-50/50 border-transparent opacity-60"
+                      )}
+                    >
+                      {/* Folder Header */}
+                      <label className="flex items-center gap-3 p-3 cursor-pointer">
+                        <Checkbox
+                          checked={isSelected}
+                          onCheckedChange={() => toggleFolder(folder.id)}
+                        />
+                        <div className="flex-1">
+                          <div className="text-sm font-bold text-stone-800">{folder.name}</div>
+                          <div className="text-[10px] text-stone-500">{folder.desc}</div>
                         </div>
-                      </div>
-                    )}
-                  </div>
-                )
-              })}
-            </div>
+                        {isSelected && (
+                          <div className="text-[10px] font-bold text-indigo-600 uppercase tracking-wider">
+                            {Object.keys(folderAccess).length} user
+                          </div>
+                        )}
+                      </label>
+
+                      {/* Per-User Access Table */}
+                      {isSelected && (
+                        <div className="border-t border-stone-100 px-3 pb-3">
+                          <div className="mt-2 overflow-x-auto">
+                            <table className="w-full text-xs">
+                              <thead>
+                                <tr className="border-b border-stone-100">
+                                  <th className="text-left py-1.5 pr-3 text-stone-500 font-semibold w-full">Anggota Tim</th>
+                                  <th className="text-center py-1.5 px-2 text-stone-500 font-semibold w-16">
+                                    <div className="flex items-center justify-center gap-1">
+                                      <Download className="w-3 h-3" />
+                                      <span>DL</span>
+                                    </div>
+                                  </th>
+                                  <th className="text-center py-1.5 px-2 text-stone-500 font-semibold w-16">
+                                    <div className="flex items-center justify-center gap-1">
+                                      <Upload className="w-3 h-3" />
+                                      <span>UL</span>
+                                    </div>
+                                  </th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {assignedUsers.map(user => {
+                                  const access = folderAccess[user.id] || { download: false, upload: false }
+                                  const stage = ROLE_CONFIG[user.role]?.stage || 1
+                                  return (
+                                    <tr key={user.id} className="border-b border-stone-50 last:border-0">
+                                      <td className="py-1.5 pr-3">
+                                        <div className="flex items-center gap-1.5">
+                                          <div className="w-5 h-5 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-[9px] font-bold shrink-0">
+                                            {user.name.charAt(0)}
+                                          </div>
+                                          <div className="min-w-0">
+                                            <div className="font-medium text-stone-700 truncate">{user.name}</div>
+                                            <div className="text-[9px] text-stone-400">
+                                              {user.role} • Tahap {stage}
+                                            </div>
+                                          </div>
+                                        </div>
+                                      </td>
+                                      <td className="py-1.5 px-2 text-center">
+                                        <Checkbox
+                                          checked={access.download}
+                                          onCheckedChange={() => toggleUserAccess(folder.id, user.id, 'download')}
+                                          className="mx-auto"
+                                        />
+                                      </td>
+                                      <td className="py-1.5 px-2 text-center">
+                                        <Checkbox
+                                          checked={access.upload}
+                                          onCheckedChange={() => toggleUserAccess(folder.id, user.id, 'upload')}
+                                          className="mx-auto"
+                                        />
+                                      </td>
+                                    </tr>
+                                  )
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
           </div>
 
           {/* Submit */}

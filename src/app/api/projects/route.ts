@@ -63,7 +63,9 @@ export async function GET(request: NextRequest) {
         bg: f.bgColor || '',
         border: f.borderColor || '',
         link: f.link || '',
-        assignedRoles: JSON.parse(f.assignedRoles || '[]')
+        assignedRoles: JSON.parse(f.assignedRoles || '[]'),
+        assignedUsers: JSON.parse((f as any).assignedUsers || '[]'),
+        parentFolderId: f.parentFolderId || null
       }))
     }))
     
@@ -112,7 +114,7 @@ export async function POST(request: NextRequest) {
           }))
         },
         driveFolders: {
-          create: driveFolders.map((f: { folderId: string; name: string; desc: string; color: string; bg: string; border: string; link: string; assignedRoles: string[]; parentFolderId?: string }) => ({
+          create: driveFolders.map((f: { folderId: string; name: string; desc: string; color: string; bg: string; border: string; link: string; assignedRoles: string[]; assignedUsers?: any[]; parentFolderId?: string }) => ({
             folderId: f.folderId,
             name: f.name,
             description: f.desc,
@@ -121,6 +123,7 @@ export async function POST(request: NextRequest) {
             borderColor: f.border,
             link: f.link,
             assignedRoles: JSON.stringify(f.assignedRoles),
+            assignedUsers: f.assignedUsers ? JSON.stringify(f.assignedUsers) : null,
             parentFolderId: f.parentFolderId || null
           }))
         }
@@ -178,7 +181,9 @@ export async function POST(request: NextRequest) {
         bg: f.bgColor || '',
         border: f.borderColor || '',
         link: f.link || '',
-        assignedRoles: JSON.parse(f.assignedRoles || '[]')
+        assignedRoles: JSON.parse(f.assignedRoles || '[]'),
+        assignedUsers: JSON.parse((f as any).assignedUsers || '[]'),
+        parentFolderId: f.parentFolderId || null
       }))
     })
   } catch (error) {

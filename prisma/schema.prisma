@@ -8,7 +8,7 @@ generator client {
 datasource db {
   provider  = "postgresql"
   url       = env("DATABASE_URL")
-  directUrl = env("DIRECT_DATABASE_URL")
+  directUrl = env("DATABASE_URL")
 }
 
 model User {
@@ -83,6 +83,7 @@ model DriveFolder {
   description    String?
   link           String?
   assignedRoles  String?
+  assignedUsers  String?   // JSON: [{userId, download, upload}]
   color          String?
   bgColor        String?
   borderColor    String?
