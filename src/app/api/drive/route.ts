@@ -21,6 +21,9 @@ interface AssignedUser {
 // Stage-role mapping
 const STAGE1_ROLES = ['Reporter', 'Photographer & Audio', 'Videographer & Audio', 'Graphic Designer']
 const STAGE2_ROLES = ['Editor (Media)', 'Editor (Web Article & Social Media)', 'Streaming Operator', 'Podcast Operator']
+const REVIEWER_ROLES = ['Reviewer']
+// Roles for LAINNYA subfolders (assigned production staff)
+const LAINNYA_ROLES = ['Reporter', 'Photographer & Audio', 'Videographer & Audio']
 
 // Create Google Drive client from service account
 function getDriveClient(serviceAccountKey: string) {
@@ -247,8 +250,19 @@ export async function POST(request: NextRequest) {
       await createUserSubfolders(drive, folderIdMap['desain'], 'desain', graphicDesignerUsers, settings.driveSharedDriveId, createdFolders)
     }
     
-    // LAINNYA → NO user subfolders (accessible to all)
-    // FINAL → NO subfolders (Publisher downloads only)
+    // FINAL PRODUCT → Subfolders for Reviewer (for revision uploads)
+    const reviewerUsers = allUsers.filter(u => REVIEWER_ROLES.includes(u.role))
+    if (folderIdMap['final'] && reviewerUsers.length > 0) {
+      console.log('[DRIVE] Creating Reviewer subfolders in FINAL PRODUCT:', reviewerUsers.map(u => u.userName).join(', '))
+      await createUserSubfolders(drive, folderIdMap['final'], 'final', reviewerUsers, settings.driveSharedDriveId, createdFolders)
+    }
+
+    // LAINNYA → Subfolders for Stage 1 assigned staff (Reporter, Photographer & Audio, Videographer & Audio)
+    const lainnyaUsers = allUsers.filter(u => LAINNYA_ROLES.includes(u.role))
+    if (folderIdMap['lainnya'] && lainnyaUsers.length > 0) {
+      console.log('[DRIVE] Creating Stage 1 staff subfolders in LAINNYA:', lainnyaUsers.map(u => u.userName).join(', '))
+      await createUserSubfolders(drive, folderIdMap['lainnya'], 'lainnya', lainnyaUsers, settings.driveSharedDriveId, createdFolders)
+    }
     
     return NextResponse.json({
       success: true,

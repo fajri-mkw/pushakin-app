@@ -284,6 +284,10 @@ export function CreateProjectView() {
     const stage1Tasks = tasksData.filter(t => stage1Roles.includes(t.role))
     const stage2Tasks = tasksData.filter(t => stage2Roles.includes(t.role))
     const graphicDesignerTasks = tasksData.filter(t => t.role === 'Graphic Designer')
+    const reviewerTasks = tasksData.filter(t => t.role === 'Reviewer')
+    // Roles for LAINNYA subfolders (assigned production staff)
+    const lainnyaRoles = ['Reporter', 'Photographer & Audio', 'Videographer & Audio']
+    const lainnyaTasks = tasksData.filter(t => lainnyaRoles.includes(t.role))
     
     // Helper to generate user subfolders for a given parent
     const generateSubfolders = (parentFolderId: string, parentFolderName: string, taskList: Array<{ role: string; assignedTo: string }>, parentTs: number) => {
@@ -359,8 +363,38 @@ export function CreateProjectView() {
         })
         // Create Graphic Designer subfolders inside DESAIN
         generateSubfolders('desain', 'DESAIN', graphicDesignerTasks, nowTs)
+      } else if (folderId === 'final') {
+        // FINAL PRODUCT - create main folder
+        folders.push({
+          folderId: 'final',
+          name: optionInfo?.name || 'FINAL PRODUCT',
+          desc: optionInfo?.desc || '',
+          color: optionInfo?.color || 'text-green-600',
+          bg: optionInfo?.bg || 'bg-green-50',
+          border: optionInfo?.border || 'border-green-200',
+          link: `https://drive.google.com/drive/folders/mock-final-main-${nowTs}`,
+          assignedRoles: []
+        })
+        // Create Reviewer subfolders inside FINAL (for revision uploads)
+        if (reviewerTasks.length > 0) {
+          generateSubfolders('final', 'FINAL', reviewerTasks, nowTs)
+        }
+      } else if (folderId === 'lainnya' && lainnyaTasks.length > 0) {
+        // LAINNYA - create main folder
+        folders.push({
+          folderId: 'lainnya',
+          name: optionInfo?.name || 'LAINNYA',
+          desc: optionInfo?.desc || '',
+          color: optionInfo?.color || 'text-purple-600',
+          bg: optionInfo?.bg || 'bg-purple-50',
+          border: optionInfo?.border || 'border-purple-200',
+          link: `https://drive.google.com/drive/folders/mock-lainnya-main-${nowTs}`,
+          assignedRoles: []
+        })
+        // Create Stage 1 staff subfolders inside LAINNYA
+        generateSubfolders('lainnya', 'LAINNYA', lainnyaTasks, nowTs)
       } else {
-        // Other folders (final, lainnya) stay as-is with no subfolders
+        // Other folders stay as-is with no subfolders
         folders.push({
           folderId,
           name: optionInfo?.name || `Folder ${folderId}`,
