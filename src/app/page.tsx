@@ -1,6 +1,9 @@
 'use client'
 
-import { Suspense, useEffect, useState } from 'react'
+// Force dynamic rendering to prevent hydration mismatches
+// This is needed because the page uses useSearchParams and browser APIs
+
+import React, { Suspense, useEffect, useState, useCallback } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { useAppStore, type User } from '@/lib/store'
 import { LoginView } from '@/components/pushakin/login-view'
@@ -26,6 +29,35 @@ function LoadingSpinner() {
       <div className="text-center">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-violet-600 mx-auto mb-4" />
         <p className="text-slate-600">Memuat Pushakin Flows...</p>
+      </div>
+    </div>
+  )
+}
+
+function ErrorFallback({ error, resetErrorBoundary }: { error: Error; resetErrorBoundary: () => void }) {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-100 via-blue-50 to-violet-100 p-4">
+      <div className="max-w-md w-full text-center">
+        <div className="w-20 h-20 bg-red-100 rounded-2xl flex items-center justify-center mx-auto mb-6">
+          <span className="text-4xl">⚠️</span>
+        </div>
+        <h1 className="text-2xl font-bold text-slate-800 mb-2">Terjadi Kesalahan</h1>
+        <p className="text-slate-500 mb-2 text-sm">Aplikasi mengalami error tidak terduga.</p>
+        <p className="text-red-400 text-xs font-mono mb-6 bg-red-50 p-3 rounded-xl break-all">{error?.message || 'Unknown error'}</p>
+        <div className="flex flex-col gap-2">
+          <button
+            onClick={resetErrorBoundary}
+            className="w-full py-3 bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-700 hover:to-purple-700 text-white rounded-xl font-medium transition-colors"
+          >
+            Coba Lagi
+          </button>
+          <button
+            onClick={() => { window.location.href = window.location.pathname }}
+            className="w-full py-3 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl font-medium transition-colors"
+          >
+            Reload Halaman
+          </button>
+        </div>
       </div>
     </div>
   )
@@ -383,10 +415,36 @@ function AppContent() {
   )
 }
 
+class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean; error: Error | null }> {
+    constructor(props: { children: React.ReactNode }) {
+      super(props)
+      this.state = { hasError: false, error: null }
+    }
+    static getDerivedStateFromError(error: Error) {
+      return { hasError: true, error }
+    }
+    componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+      console.error('[Pushakin] Client-side error:', error, errorInfo)
+    }
+    render() {
+      if (this.state.hasError) {
+        return (
+          <ErrorFallback
+            error={this.state.error!}
+            resetErrorBoundary={() => this.setState({ hasError: false, error: null })}
+          />
+        )
+      }
+      return this.props.children
+    }
+  }
+
 export default function Home() {
   return (
-    <Suspense fallback={<LoadingSpinner />}>
-      <AppContent />
-    </Suspense>
+    <ErrorBoundary>
+      <Suspense fallback={<LoadingSpinner />}>
+        <AppContent />
+      </Suspense>
+    </ErrorBoundary>
   )
 }
