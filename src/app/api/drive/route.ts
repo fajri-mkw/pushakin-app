@@ -237,68 +237,64 @@ export async function POST(request: NextRequest) {
     // Filter users by stage for subfolder creation
     const allUsers = assignedUsers || []
     
-    // ─── RAW folder → Subfolders for Stage 1 ───
-    const stage1Users = allUsers.filter(u => STAGE1_ROLES.includes(u.role))
-    if (folderIdMap['raw'] && stage1Users.length > 0) {
-      console.log('[DRIVE] Creating Stage 1 user subfolders in RAW:', stage1Users.map(u => u.userName).join(', '))
-      await createUserSubfolders(drive, folderIdMap['raw'], 'raw', stage1Users, settings.driveSharedDriveId, createdFolders)
-    }
+    // ─── Subfolder creation strategy ───
+    // When manager provides uploadFolders (user explicitly set UL buttons), 
+    // use it as the SOLE source of truth for subfolder creation.
+    // Otherwise, fallback to stage-based auto-creation.
     
-    // ─── REVISED folder → Subfolders for Stage 2 ───
-    const stage2Users = allUsers.filter(u => STAGE2_ROLES.includes(u.role))
-    if (folderIdMap['revised'] && stage2Users.length > 0) {
-      console.log('[DRIVE] Creating Stage 2 user subfolders in REVISED:', stage2Users.map(u => u.userName).join(', '))
-      await createUserSubfolders(drive, folderIdMap['revised'], 'revised', stage2Users, settings.driveSharedDriveId, createdFolders)
-    }
+    const hasManagerUploadFolders = uploadFolders && Object.keys(uploadFolders).length > 0
     
-    // ─── DESAIN folder → Subfolders for Graphic Designer ───
-    const graphicDesignerUsers = allUsers.filter(u => u.role === 'Graphic Designer')
-    if (folderIdMap['desain'] && graphicDesignerUsers.length > 0) {
-      console.log('[DRIVE] Creating Graphic Designer subfolders in DESAIN:', graphicDesignerUsers.map(u => u.userName).join(', '))
-      await createUserSubfolders(drive, folderIdMap['desain'], 'desain', graphicDesignerUsers, settings.driveSharedDriveId, createdFolders)
-    }
-    
-    // ─── FINAL PRODUCT → Subfolders for Reviewer ───
-    const reviewerUsers = allUsers.filter(u => REVIEWER_ROLES.includes(u.role))
-    if (folderIdMap['final'] && reviewerUsers.length > 0) {
-      console.log('[DRIVE] Creating Reviewer subfolders in FINAL PRODUCT:', reviewerUsers.map(u => u.userName).join(', '))
-      await createUserSubfolders(drive, folderIdMap['final'], 'final', reviewerUsers, settings.driveSharedDriveId, createdFolders)
-    }
-
-    // ─── LAINNYA → Subfolders for ALL staff (Stage 1 + Stage 2) ───
-    const allProductionUsers = allUsers.filter(u => !REVIEWER_ROLES.includes(u.role) && !['Publisher Web', 'Publisher Social Media'].includes(u.role))
-    if (folderIdMap['lainnya'] && allProductionUsers.length > 0) {
-      console.log('[DRIVE] Creating ALL staff subfolders in LAINNYA:', allProductionUsers.map(u => u.userName).join(', '))
-      await createUserSubfolders(drive, folderIdMap['lainnya'], 'lainnya', allProductionUsers, settings.driveSharedDriveId, createdFolders)
-    }
-    
-    // ─── Manager-specified upload folders (override if uploadFolders is provided) ───
-    if (uploadFolders && Object.keys(uploadFolders).length > 0) {
-      // Remove previously auto-created subfolders and re-create based on uploadFolders
-      // We only add new subfolders, don't remove the auto-created ones
-      console.log('[DRIVE] Manager specified custom uploadFolders:', JSON.stringify(uploadFolders))
+    if (hasManagerUploadFolders) {
+      // ─── Manager-specified: ONLY create subfolders for users with upload=true ───
+      console.log('[DRIVE] Using manager-specified uploadFolders as primary source:', JSON.stringify(uploadFolders))
       
       for (const [folderType, userIds] of Object.entries(uploadFolders)) {
         if (!folderIdMap[folderType] || !userIds.length) continue
         
         const usersForFolder = (assignedUsers || []).filter(u => userIds.includes(u.userId))
         
-        // Check if subfolders already created for this folder (avoid duplicates)
-        const existingSubfolders = createdFolders.filter(f => f.parentFolderId === folderType)
-        const existingUserIds = new Set(
-          existingSubfolders.map(f => {
-            // Extract userId from folderId pattern: folderType-role-userId
-            const parts = f.folderId.split('-')
-            return parts[parts.length - 1]
-          })
-        )
-        
-        const newUsers = usersForFolder.filter(u => !existingUserIds.has(u.userId))
-        
-        if (newUsers.length > 0) {
-          console.log(`[DRIVE] Creating manager-specified subfolders in ${folderType}:`, newUsers.map(u => u.userName).join(', '))
-          await createUserSubfolders(drive, folderIdMap[folderType], folderType, newUsers, settings.driveSharedDriveId, createdFolders)
+        if (usersForFolder.length > 0) {
+          console.log(`[DRIVE] Creating upload subfolders in ${folderType}:`, usersForFolder.map(u => `${u.userName} (${u.role})`).join(', '))
+          await createUserSubfolders(drive, folderIdMap[folderType], folderType, usersForFolder, settings.driveSharedDriveId, createdFolders)
         }
+      }
+    } else {
+      // ─── Fallback: stage-based auto-creation ───
+      console.log('[DRIVE] No uploadFolders provided, using stage-based auto-creation fallback')
+      
+      // RAW folder → Subfolders for Stage 1
+      const stage1Users = allUsers.filter(u => STAGE1_ROLES.includes(u.role))
+      if (folderIdMap['raw'] && stage1Users.length > 0) {
+        console.log('[DRIVE] Creating Stage 1 user subfolders in RAW:', stage1Users.map(u => u.userName).join(', '))
+        await createUserSubfolders(drive, folderIdMap['raw'], 'raw', stage1Users, settings.driveSharedDriveId, createdFolders)
+      }
+      
+      // REVISED folder → Subfolders for Stage 2
+      const stage2Users = allUsers.filter(u => STAGE2_ROLES.includes(u.role))
+      if (folderIdMap['revised'] && stage2Users.length > 0) {
+        console.log('[DRIVE] Creating Stage 2 user subfolders in REVISED:', stage2Users.map(u => u.userName).join(', '))
+        await createUserSubfolders(drive, folderIdMap['revised'], 'revised', stage2Users, settings.driveSharedDriveId, createdFolders)
+      }
+      
+      // DESAIN folder → Subfolders for Graphic Designer
+      const graphicDesignerUsers = allUsers.filter(u => u.role === 'Graphic Designer')
+      if (folderIdMap['desain'] && graphicDesignerUsers.length > 0) {
+        console.log('[DRIVE] Creating Graphic Designer subfolders in DESAIN:', graphicDesignerUsers.map(u => u.userName).join(', '))
+        await createUserSubfolders(drive, folderIdMap['desain'], 'desain', graphicDesignerUsers, settings.driveSharedDriveId, createdFolders)
+      }
+      
+      // FINAL PRODUCT → Subfolders for Reviewer
+      const reviewerUsers = allUsers.filter(u => REVIEWER_ROLES.includes(u.role))
+      if (folderIdMap['final'] && reviewerUsers.length > 0) {
+        console.log('[DRIVE] Creating Reviewer subfolders in FINAL PRODUCT:', reviewerUsers.map(u => u.userName).join(', '))
+        await createUserSubfolders(drive, folderIdMap['final'], 'final', reviewerUsers, settings.driveSharedDriveId, createdFolders)
+      }
+
+      // LAINNYA → Subfolders for ALL staff (Stage 1 + Stage 2)
+      const allProductionUsers = allUsers.filter(u => !REVIEWER_ROLES.includes(u.role) && !['Publisher Web', 'Publisher Social Media'].includes(u.role))
+      if (folderIdMap['lainnya'] && allProductionUsers.length > 0) {
+        console.log('[DRIVE] Creating ALL staff subfolders in LAINNYA:', allProductionUsers.map(u => u.userName).join(', '))
+        await createUserSubfolders(drive, folderIdMap['lainnya'], 'lainnya', allProductionUsers, settings.driveSharedDriveId, createdFolders)
       }
     }
     

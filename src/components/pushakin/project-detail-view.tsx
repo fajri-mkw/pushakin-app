@@ -898,29 +898,36 @@ function TaskCard({
     })
   }
 
-  // Fix 4 + Fix 5: getUploadFolders with desain for stage 2, fallback only parent folders
+  // Fix 4 + Fix 5: getUploadFolders - prioritize user's OWN subfolder, then parent folder fallback
   const getUploadFolders = () => {
     let allowedIds = ['raw', 'revised', 'final', 'desain', 'lainnya']
     if (task.stage === 1) allowedIds = ['raw', 'desain', 'lainnya']
-    if (task.stage === 2) allowedIds = ['revised', 'desain', 'lainnya'] // Fix 4: stage 2 tambah 'desain'
+    if (task.stage === 2) allowedIds = ['revised', 'desain', 'lainnya']
     if (task.stage === 3) allowedIds = ['final', 'revised', 'lainnya']
     
     // Separate subfolders and parent folders
     const allSubfolders = visibleFolders.filter(f => f.parentFolderId)
     const myRole = currentUser?.role || ''
+    const myName = currentUser?.name || ''
     
-    // First: find user's specific subfolder(s) where role matches
+    // First: find user's OWN specific subfolder(s) by matching both role AND user name
+    // Subfolder naming: USERCODE_USERNAME_ROLE (e.g., "AF_Ahmad_Fauzi_Reporter")
     const mySubfolders = allSubfolders.filter(sub => {
       const parentId = sub.parentFolderId || ''
       if (!allowedIds.includes(parentId)) return false
-      return sub.assignedRoles?.includes(myRole)
+      if (!sub.assignedRoles?.includes(myRole)) return false
+      // Match by user name in subfolder name for precision
+      if (myName && sub.name) {
+        return sub.name.includes(myName)
+      }
+      return true
     })
     
     if (mySubfolders.length > 0) {
       return mySubfolders
     }
     
-    // Fix 5: fallback only returns parent folders (skip subfolders)
+    // Fallback: only parent folders (skip subfolders belonging to other users)
     return visibleFolders.filter(f => {
       if (f.parentFolderId) return false // skip subfolders in fallback
       if (!allowedIds.includes(f.folderId)) return false

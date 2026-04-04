@@ -848,7 +848,7 @@ export function CreateProjectView() {
                   <div
                     key={folder.id}
                     className={cn(
-                      "flex items-center gap-2 p-2.5 rounded-lg border-2 cursor-pointer transition-all",
+                      "flex items-center gap-2 p-2.5 rounded-lg border-2 cursor-pointer transition-all select-none",
                       isSelected 
                         ? "bg-white border-indigo-500 shadow-sm" 
                         : "bg-stone-50/50 border-transparent hover:border-indigo-200"
@@ -857,8 +857,7 @@ export function CreateProjectView() {
                   >
                     <Checkbox 
                       checked={isSelected} 
-                      onCheckedChange={() => toggleFolder(folder.id)}
-                      onClick={(e) => e.stopPropagation()}
+                      className="pointer-events-none"
                     />
                     <span className={cn("text-xs font-bold truncate", isSelected ? "text-indigo-700" : "text-stone-500")}>
                       {folder.name.split(' (')[0]}
