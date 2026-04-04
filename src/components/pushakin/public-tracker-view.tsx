@@ -8,9 +8,10 @@ import {
   Clock,
   XCircle,
   TrendingUp,
-  FolderKanban
+  FolderKanban,
+  RefreshCw
 } from 'lucide-react'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { cn } from '@/lib/utils'
 
 interface PublicTask {
@@ -53,35 +54,42 @@ interface PublicTrackerViewProps {
 
 const FILTER_OPTIONS = [
   { id: 'all', label: 'Semua' },
+  { id: 'active', label: 'Berjalan' },
   { id: 'day', label: 'Hari Ini' },
   { id: 'week', label: 'Minggu Ini' },
   { id: 'month', label: 'Bulan Ini' },
   { id: 'year', label: 'Tahun Ini' }
 ]
 
-const STAGE_COLORS: Record<number, { bg: string; border: string }> = {
-  1: { bg: 'bg-violet-600', border: 'border-violet-400' },
-  2: { bg: 'bg-orange-500', border: 'border-orange-400' },
-  3: { bg: 'bg-blue-600', border: 'border-blue-400' },
-  4: { bg: 'bg-purple-600', border: 'border-purple-400' },
+const STAGE_COLORS: Record<number, { bg: string; border: string; text: string }> = {
+  1: { bg: 'bg-violet-600', border: 'border-violet-400', text: 'text-violet-400' },
+  2: { bg: 'bg-orange-500', border: 'border-orange-400', text: 'text-orange-400' },
+  3: { bg: 'bg-blue-600', border: 'border-blue-400', text: 'text-blue-400' },
+  4: { bg: 'bg-purple-600', border: 'border-purple-400', text: 'text-purple-400' },
 }
+
+const AUTO_REFRESH_INTERVAL = 30 * 60 * 1000 // 30 minutes
+const AUTO_PLAY_INTERVAL = 8000 // 8 seconds between pages
 
 export function PublicTrackerView({ onBack }: PublicTrackerViewProps) {
   const { showAlert } = useAppStore()
   const [projects, setProjects] = useState<PublicProject[]>([])
+  const [allProjects, setAllProjects] = useState<PublicProject[]>([])
   const [stats, setStats] = useState({ total: 0, completed: 0, active: 0 })
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [timeFilter, setTimeFilter] = useState('all')
+  const [timeFilter, setTimeFilter] = useState('active') // Default to active projects
   const [currentPage, setCurrentPage] = useState(0)
   const [currentTime, setCurrentTime] = useState(new Date())
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
+  const [isRefreshing, setIsRefreshing] = useState(false)
 
-  // Projects per page (3 for better fit)
-  const PROJECTS_PER_PAGE = 3
-  const AUTO_PLAY_INTERVAL = 10000 // 10 seconds
+  // 10 projects per page in 5x2 grid
+  const PROJECTS_PER_PAGE = 10
 
-  const fetchProjects = async (filter: string) => {
-    setLoading(true)
+  const fetchProjects = useCallback(async (filter: string, silent = false) => {
+    if (!silent) setLoading(true)
+    else setIsRefreshing(true)
     try {
       const response = await fetch(`/api/public-tracker?filter=${filter}`)
       const data = await response.json()
@@ -91,19 +99,40 @@ export function PublicTrackerView({ onBack }: PublicTrackerViewProps) {
         return
       }
       
-      setProjects(data.projects)
       setStats(data.stats)
+      setAllProjects(data.projects)
+      setLastUpdated(new Date())
       setCurrentPage(0)
     } catch (err) {
-      setError('Failed to load projects')
+      if (!silent) setError('Failed to load projects')
     } finally {
       setLoading(false)
+      setIsRefreshing(false)
     }
-  }
+  }, [])
 
+  // Filter projects based on client-side filter
   useEffect(() => {
-    fetchProjects(timeFilter)
-  }, [timeFilter])
+    let filtered = allProjects
+    if (timeFilter === 'active') {
+      filtered = allProjects.filter(p => p.currentStage < 5)
+    }
+    setProjects(filtered)
+    setCurrentPage(0)
+  }, [allProjects, timeFilter])
+
+  // Initial fetch
+  useEffect(() => {
+    fetchProjects('all')
+  }, [fetchProjects])
+
+  // Auto-refresh every 30 minutes
+  useEffect(() => {
+    const timer = setInterval(() => {
+      fetchProjects('all', true)
+    }, AUTO_REFRESH_INTERVAL)
+    return () => clearInterval(timer)
+  }, [fetchProjects])
 
   // Update time every second
   useEffect(() => {
@@ -166,6 +195,10 @@ export function PublicTrackerView({ onBack }: PublicTrackerViewProps) {
     return date.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
   }
 
+  const formatLastUpdated = (date: Date) => {
+    return date.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
+  }
+
   if (loading) {
     return (
       <div className="fixed inset-0 bg-slate-900 flex items-center justify-center">
@@ -193,133 +226,150 @@ export function PublicTrackerView({ onBack }: PublicTrackerViewProps) {
 
   return (
     <div className="fixed inset-0 bg-slate-900 overflow-hidden">
-      {/* 16:9 Container */}
       <div className="w-full h-full flex flex-col">
         
-        {/* Header - Fixed Height */}
-        <div className="h-[8%] bg-gradient-to-r from-slate-900 via-blue-950 to-slate-900 border-b border-slate-700 px-6 flex items-center justify-between shrink-0">
+        {/* Header - Compact */}
+        <div className="h-[7%] min-h-[48px] bg-gradient-to-r from-slate-900 via-blue-950 to-slate-900 border-b border-slate-700 px-4 flex items-center justify-between shrink-0">
           {/* Left */}
-          <div className="flex items-center gap-3">
-            <div className="bg-gradient-to-br from-violet-500 to-purple-600 p-2 rounded-lg">
-              <FolderKanban className="w-6 h-6 text-white" />
+          <div className="flex items-center gap-2.5">
+            <div className="bg-gradient-to-br from-violet-500 to-purple-600 p-1.5 rounded-lg">
+              <FolderKanban className="w-5 h-5 text-white" />
             </div>
             <div>
-              <h1 className="text-xl font-bold text-white tracking-wide">PUSHAKIN FLOWS</h1>
+              <h1 className="text-lg font-bold text-white tracking-wide leading-tight">PUSHAKIN FLOWS</h1>
               <div className="flex items-center gap-1.5">
-                <span className="text-xs font-semibold text-violet-400">Sistem Manajemen Produksi</span>
-                <span className="text-slate-500">|</span>
-                <span className="text-[10px] text-slate-400">Tim Pusat Hubungan Masyarakat dan Keterbukaan Informasi</span>
+                <span className="text-[10px] font-semibold text-violet-400">Sistem Manajemen Produksi</span>
+                <span className="text-slate-500 text-[10px]">|</span>
+                <span className="text-[9px] text-slate-400">Tim Pusat Hubungan Masyarakat dan Keterbukaan Informasi</span>
               </div>
             </div>
           </div>
           
           {/* Center - Time */}
           <div className="text-center">
-            <div className="text-3xl font-bold text-white font-mono tracking-wider">
+            <div className="text-2xl font-bold text-white font-mono tracking-wider leading-tight">
               {formatTime(currentTime)}
             </div>
-            <div className="text-sm text-slate-400">
+            <div className="text-[11px] text-slate-400 leading-tight">
               {formatDate(currentTime)}
             </div>
           </div>
 
-          {/* Right - Filter */}
-          <div className="flex items-center gap-1 bg-slate-800 rounded-lg p-1">
-            {FILTER_OPTIONS.map(opt => (
-              <button
-                key={opt.id}
-                onClick={() => setTimeFilter(opt.id)}
-                className={cn(
-                  "px-3 py-1.5 text-xs font-medium rounded transition-all",
-                  timeFilter === opt.id 
-                    ? "bg-gradient-to-r from-violet-600 to-purple-600 text-white" 
-                    : "text-slate-400 hover:text-white"
-                )}
-              >
-                {opt.label}
-              </button>
-            ))}
+          {/* Right - Filter + Refresh */}
+          <div className="flex items-center gap-2">
+            <button 
+              onClick={() => fetchProjects('all', true)}
+              className={cn(
+                "p-1.5 rounded-lg transition-all border",
+                isRefreshing 
+                  ? "border-violet-500 text-violet-400 animate-spin" 
+                  : "border-slate-600 text-slate-400 hover:text-white hover:border-slate-500"
+              )}
+              title="Refresh data"
+            >
+              <RefreshCw className="w-4 h-4" />
+            </button>
+            <div className="flex items-center gap-0.5 bg-slate-800 rounded-lg p-0.5">
+              {FILTER_OPTIONS.map(opt => (
+                <button
+                  key={opt.id}
+                  onClick={() => setTimeFilter(opt.id)}
+                  className={cn(
+                    "px-2 py-1 text-[10px] font-medium rounded transition-all",
+                    timeFilter === opt.id 
+                      ? "bg-gradient-to-r from-violet-600 to-purple-600 text-white" 
+                      : "text-slate-400 hover:text-white"
+                  )}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
 
-        {/* Main Content - Fills remaining space */}
-        <div className="flex-1 p-4 flex flex-col gap-4 overflow-hidden">
+        {/* Main Content */}
+        <div className="flex-1 p-3 flex flex-col gap-2.5 overflow-hidden">
           
-          {/* Stats Row - Fixed Height */}
-          <div className="h-[18%] grid grid-cols-3 gap-4 shrink-0">
+          {/* Stats Row - Compact */}
+          <div className="h-[13%] min-h-[56px] grid grid-cols-3 gap-3 shrink-0">
             {/* Total */}
-            <div className="bg-gradient-to-br from-slate-800 to-slate-900 rounded-xl p-4 border border-slate-700 flex items-center gap-4">
-              <div className="p-3 bg-blue-500/20 rounded-lg">
-                <TrendingUp className="w-8 h-8 text-blue-400" />
+            <div className="bg-gradient-to-br from-slate-800 to-slate-900 rounded-lg p-3 border border-slate-700 flex items-center gap-3">
+              <div className="p-2 bg-blue-500/20 rounded-lg">
+                <TrendingUp className="w-6 h-6 text-blue-400" />
               </div>
               <div>
-                <div className="text-4xl font-bold text-white">{stats.total}</div>
-                <div className="text-sm text-slate-400 uppercase tracking-wider">Total Proyek</div>
+                <div className="text-3xl font-bold text-white leading-tight">{stats.total}</div>
+                <div className="text-[11px] text-slate-400 uppercase tracking-wider">Total Proyek</div>
               </div>
             </div>
 
             {/* Active */}
-            <div className="bg-gradient-to-br from-orange-600 to-orange-700 rounded-xl p-4 flex items-center gap-4">
-              <div className="p-3 bg-white/20 rounded-lg">
-                <Clock className="w-8 h-8 text-white" />
+            <div className="bg-gradient-to-br from-orange-600 to-orange-700 rounded-lg p-3 border border-orange-500/30 flex items-center gap-3">
+              <div className="p-2 bg-white/20 rounded-lg">
+                <Clock className="w-6 h-6 text-white" />
               </div>
               <div>
-                <div className="text-4xl font-bold text-white">{stats.active}</div>
-                <div className="text-sm text-orange-100 uppercase tracking-wider">Sedang Berjalan</div>
+                <div className="text-3xl font-bold text-white leading-tight">{stats.active}</div>
+                <div className="text-[11px] text-orange-100 uppercase tracking-wider">Sedang Berjalan</div>
               </div>
             </div>
 
             {/* Completed */}
-            <div className="bg-gradient-to-br from-violet-600 to-purple-700 rounded-xl p-4 flex items-center gap-4">
-              <div className="p-3 bg-white/20 rounded-lg">
-                <CheckCircle2 className="w-8 h-8 text-white" />
+            <div className="bg-gradient-to-br from-violet-600 to-purple-700 rounded-lg p-3 border border-violet-500/30 flex items-center gap-3">
+              <div className="p-2 bg-white/20 rounded-lg">
+                <CheckCircle2 className="w-6 h-6 text-white" />
               </div>
               <div>
-                <div className="text-4xl font-bold text-white">{stats.completed}</div>
-                <div className="text-sm text-violet-100 uppercase tracking-wider">Telah Selesai</div>
+                <div className="text-3xl font-bold text-white leading-tight">{stats.completed}</div>
+                <div className="text-[11px] text-violet-100 uppercase tracking-wider">Telah Selesai</div>
               </div>
             </div>
           </div>
 
-          {/* Projects - Fills remaining */}
-          <div className="flex-1 flex flex-col gap-3 overflow-hidden">
+          {/* Projects Grid - 5x2 for 10 projects */}
+          <div className="flex-1 flex flex-col gap-2 overflow-hidden">
             {projects.length === 0 ? (
               <div className="flex-1 flex items-center justify-center">
                 <div className="text-center text-slate-500">
-                  <FolderKanban className="w-16 h-16 mx-auto mb-3 opacity-50" />
-                  <p className="text-lg">Tidak ada proyek untuk ditampilkan</p>
+                  <FolderKanban className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                  <p className="text-base">Tidak ada proyek untuk ditampilkan</p>
                 </div>
               </div>
             ) : (
               <>
-                {/* Project Cards */}
-                <div className="flex-1 grid grid-cols-3 gap-4">
+                {/* Project Cards - 5 columns x 2 rows */}
+                <div className="flex-1 grid grid-cols-5 grid-rows-2 gap-2.5">
                   {currentProjects.map(project => {
                     const { percentage, stageProgress, teamByStage } = getTaskProgress(project)
                     const isCompleted = project.currentStage === 5
+                    const currentStage = Math.min(project.currentStage, 4)
 
                     return (
                       <div
                         key={project.id}
-                        className="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden flex flex-col"
+                        className="bg-slate-800 rounded-lg border border-slate-700 overflow-hidden flex flex-col min-h-0"
                       >
-                        {/* Project Header */}
-                        <div className="bg-gradient-to-r from-slate-900 via-blue-950 to-slate-900 px-4 py-2.5 flex items-center justify-between shrink-0">
-                          <div className="flex items-center gap-2 min-w-0 flex-1">
+                        {/* Project Header - Compact */}
+                        <div className="bg-gradient-to-r from-slate-900/80 via-blue-950/50 to-slate-900/80 px-2.5 py-1.5 flex items-center justify-between shrink-0 border-b border-slate-700/50">
+                          <div className="flex items-center gap-1.5 min-w-0 flex-1">
                             <Badge className={cn(
-                              "shrink-0 text-[10px] font-bold uppercase",
-                              isCompleted ? "bg-green-500" : "bg-orange-500"
+                              "shrink-0 text-[8px] font-bold uppercase px-1.5 py-0",
+                              isCompleted ? "bg-green-500/90" : "bg-orange-500/90"
                             )}>
                               {isCompleted ? 'Selesai' : 'Aktif'}
                             </Badge>
-                            <h3 className="text-base font-bold text-white truncate">{project.title}</h3>
+                            <h3 className="text-[11px] font-bold text-white truncate leading-tight">{project.title}</h3>
                           </div>
-                          <div className="text-2xl font-bold text-white shrink-0 ml-2">{percentage}%</div>
+                          <div className={cn(
+                            "text-sm font-bold shrink-0 ml-1.5",
+                            isCompleted ? "text-green-400" : percentage === 100 ? "text-green-400" : "text-white"
+                          )}>{percentage}%</div>
                         </div>
 
-                        {/* Step Flow */}
-                        <div className="bg-slate-900/50 px-3 py-2 border-b border-slate-700 shrink-0">
-                          <div className="flex items-center justify-between gap-1">
+                        {/* Step Flow - Compact horizontal */}
+                        <div className="px-2 py-1.5 border-b border-slate-700/50 shrink-0">
+                          <div className="flex items-center justify-between gap-0">
                             {[1, 2, 3, 4].map((stage, idx) => {
                               const colors = STAGE_COLORS[stage]
                               const isStageCompleted = stage < project.currentStage
@@ -328,33 +378,40 @@ export function PublicTrackerView({ onBack }: PublicTrackerViewProps) {
                               const stagePercent = progress.total > 0 
                                 ? Math.round((progress.completed / progress.total) * 100) 
                                 : 0
+                              const hasTasks = progress.total > 0
                               
                               return (
                                 <div key={stage} className="flex items-center flex-1 min-w-0">
-                                  <div className="flex flex-col items-center flex-1">
+                                  <div className="flex items-center gap-0.5 flex-1">
                                     <div className={cn(
-                                      "w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border-2",
+                                      "w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold border shrink-0",
                                       isStageCompleted ? "bg-green-500 border-green-400 text-white" :
-                                      isCurrent ? cn(colors.bg, "border-white/50 text-white shadow-lg") :
+                                      isCurrent ? cn(colors.bg, "border-white/40 text-white shadow-md") :
+                                      !hasTasks ? "bg-slate-800 border-slate-700 text-slate-600" :
                                       "bg-slate-700 border-slate-600 text-slate-400"
                                     )}>
-                                      {isStageCompleted ? <CheckCircle2 className="w-4 h-4" /> : stage}
+                                      {isStageCompleted ? <CheckCircle2 className="w-3 h-3" /> : stage}
                                     </div>
-                                    <div className="text-[10px] font-semibold mt-0.5 text-slate-300 truncate w-full text-center">
-                                      {STAGES[stage]}
-                                    </div>
-                                    <div className={cn(
-                                      "text-xs font-bold",
-                                      isStageCompleted ? "text-green-400" : isCurrent ? "text-white" : "text-slate-500"
-                                    )}>
-                                      {stagePercent}%
+                                    <div className="min-w-0 flex-1">
+                                      <div className={cn(
+                                        "text-[8px] font-semibold truncate leading-tight",
+                                        isStageCompleted ? "text-green-400" : isCurrent ? "text-white" : "text-slate-500"
+                                      )}>
+                                        {STAGES[stage]}
+                                      </div>
+                                      <div className={cn(
+                                        "text-[9px] font-bold leading-tight",
+                                        isStageCompleted ? "text-green-400" : isCurrent ? "text-white" : "text-slate-600"
+                                      )}>
+                                        {hasTasks ? `${stagePercent}%` : '-'}
+                                      </div>
                                     </div>
                                   </div>
                                   
                                   {idx < 3 && (
                                     <div className={cn(
-                                      "flex-1 h-0.5 mx-1 rounded-full",
-                                      isStageCompleted ? "bg-green-500" : "bg-slate-700"
+                                      "h-[2px] mx-0.5 rounded-full shrink-0",
+                                      isStageCompleted ? "bg-green-500 w-2" : "bg-slate-700 w-2"
                                     )}></div>
                                   )}
                                 </div>
@@ -363,69 +420,65 @@ export function PublicTrackerView({ onBack }: PublicTrackerViewProps) {
                           </div>
                         </div>
 
-                        {/* Team Grid */}
-                        <div className="flex-1 p-3 overflow-hidden">
-                          <div className="grid grid-cols-4 gap-2 h-full">
+                        {/* Team - Very compact */}
+                        <div className="flex-1 px-2 py-1 overflow-hidden">
+                          <div className="grid grid-cols-2 gap-x-2 gap-y-0.5 h-full">
                             {[1, 2, 3, 4].map((stage) => {
                               const members = teamByStage[stage]
                               const progress = stageProgress[stage]
-                              const colors = STAGE_COLORS[stage]
                               const isStageCompleted = stage < project.currentStage
                               const isCurrent = stage === project.currentStage
+                              const hasTasks = progress.total > 0
                               
                               return (
                                 <div 
                                   key={stage}
                                   className={cn(
-                                    "rounded-lg p-2 border flex flex-col",
-                                    isStageCompleted ? "bg-green-900/30 border-green-700" :
-                                    isCurrent ? cn(colors.bg, "/30", colors.border) :
-                                    "bg-slate-700/30 border-slate-700"
+                                    "rounded px-1 py-0.5 flex flex-col min-h-0 border",
+                                    isStageCompleted ? "bg-green-900/20 border-green-800/50" :
+                                    isCurrent ? cn(STAGE_COLORS[stage].bg, "/20 border", STAGE_COLORS[stage].border, "/40") :
+                                    hasTasks ? "bg-slate-700/20 border-slate-700/50" :
+                                    "bg-transparent border-transparent"
                                   )}
                                 >
-                                  {/* Members */}
-                                  <div className="flex-1 space-y-1 overflow-hidden">
+                                  <div className="flex-1 overflow-hidden">
                                     {members.length === 0 ? (
-                                      <div className="text-[10px] text-slate-500 text-center py-2">-</div>
+                                      <div className="text-[8px] text-slate-600 text-center">-</div>
                                     ) : (
-                                      members.slice(0, 4).map((member, idx) => {
-                                        const isTaskCompleted = member.status === 'completed'
-                                        
-                                        return (
-                                          <div key={idx} className="flex items-center gap-1">
-                                            {member.avatar ? (
-                                              <img 
-                                                src={member.avatar} 
-                                                alt={member.name}
-                                                className="w-5 h-5 rounded-full object-cover border border-white/30"
-                                              />
-                                            ) : (
+                                      <div className="space-y-px">
+                                        {members.slice(0, 3).map((member, idx) => {
+                                          const isTaskCompleted = member.status === 'completed'
+                                          return (
+                                            <div key={idx} className="flex items-center gap-0.5 leading-tight">
                                               <div className={cn(
-                                                "w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold text-white",
+                                                "w-3.5 h-3.5 rounded-full flex items-center justify-center text-[7px] font-bold text-white shrink-0",
                                                 isTaskCompleted ? "bg-green-500" : "bg-slate-600"
                                               )}>
                                                 {member.name.charAt(0)}
                                               </div>
-                                            )}
-                                            <span className="text-[10px] text-slate-300 truncate flex-1">
-                                              {member.name}
-                                            </span>
-                                            {isTaskCompleted ? (
-                                              <CheckCircle2 className="w-3.5 h-3.5 text-orange-400 shrink-0" />
-                                            ) : (
-                                              <XCircle className="w-3.5 h-3.5 text-violet-400 shrink-0" />
-                                            )}
-                                          </div>
-                                        )
-                                      })
+                                              <span className="text-[8px] text-slate-300 truncate flex-1">
+                                                {member.name.split(' ').slice(0, 2).join(' ')}
+                                              </span>
+                                              {isTaskCompleted ? (
+                                                <CheckCircle2 className="w-2.5 h-2.5 text-green-400 shrink-0" />
+                                              ) : (
+                                                <Clock className="w-2.5 h-2.5 text-slate-500 shrink-0" />
+                                              )}
+                                            </div>
+                                          )
+                                        })}
+                                        {members.length > 3 && (
+                                          <div className="text-[7px] text-slate-500 text-center">+{members.length - 3} lainnya</div>
+                                        )}
+                                      </div>
                                     )}
                                   </div>
-
-                                  {/* Progress */}
-                                  <Progress 
-                                    value={progress.total > 0 ? Math.round((progress.completed / progress.total) * 100) : 0} 
-                                    className="h-1 mt-1 bg-slate-700 [&>div]:bg-white/80" 
-                                  />
+                                  {hasTasks && (
+                                    <Progress 
+                                      value={progress.total > 0 ? Math.round((progress.completed / progress.total) * 100) : 0} 
+                                      className="h-[3px] mt-0.5 bg-slate-700 [&>div]:bg-white/70 shrink-0" 
+                                    />
+                                  )}
                                 </div>
                               )
                             })}
@@ -438,14 +491,15 @@ export function PublicTrackerView({ onBack }: PublicTrackerViewProps) {
 
                 {/* Page Indicator */}
                 {totalPages > 1 && (
-                  <div className="flex items-center justify-center gap-2 py-1 shrink-0">
+                  <div className="flex items-center justify-center gap-1.5 py-0.5 shrink-0">
                     {Array.from({ length: totalPages }, (_, i) => (
                       <div
                         key={i}
                         className={cn(
-                          "h-2 rounded-full transition-all",
-                          currentPage === i ? "bg-violet-500 w-6" : "bg-slate-600 w-2"
+                          "h-1.5 rounded-full transition-all cursor-pointer",
+                          currentPage === i ? "bg-violet-500 w-5" : "bg-slate-600 w-1.5"
                         )}
+                        onClick={() => setCurrentPage(i)}
                       />
                     ))}
                   </div>
@@ -455,13 +509,25 @@ export function PublicTrackerView({ onBack }: PublicTrackerViewProps) {
           </div>
         </div>
 
-        {/* Footer - Fixed Height */}
-        <div className="h-[5%] bg-slate-900 border-t border-slate-800 px-6 flex items-center justify-between shrink-0">
-          <div className="text-xs text-slate-500">
-            Mode Tampilan Publik • Pushakin Flows
+        {/* Footer - Compact */}
+        <div className="h-[4%] min-h-[28px] bg-slate-900 border-t border-slate-800 px-4 flex items-center justify-between shrink-0">
+          <div className="flex items-center gap-3 text-[10px] text-slate-500">
+            <span>Mode Tampilan Publik • Pushakin Flows</span>
+            {lastUpdated && (
+              <span className="flex items-center gap-1">
+                <span className={cn(
+                  "w-1.5 h-1.5 rounded-full",
+                  isRefreshing ? "bg-violet-400 animate-pulse" : "bg-green-500"
+                )}></span>
+                Update terakhir: {formatLastUpdated(lastUpdated)}
+              </span>
+            )}
           </div>
-          <div className="text-xs text-slate-500">
-            Halaman {currentPage + 1} dari {totalPages || 1}
+          <div className="text-[10px] text-slate-500">
+            {projects.length > PROJECTS_PER_PAGE && (
+              <span>Halaman {currentPage + 1} dari {totalPages} • </span>
+            )}
+            Menampilkan {currentProjects.length} dari {projects.length} proyek
           </div>
         </div>
       </div>
