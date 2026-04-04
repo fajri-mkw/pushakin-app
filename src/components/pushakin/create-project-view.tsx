@@ -292,9 +292,9 @@ export function CreateProjectView() {
     const stage2Tasks = tasksData.filter(t => stage2Roles.includes(t.role))
     const graphicDesignerTasks = tasksData.filter(t => t.role === 'Graphic Designer')
     const reviewerTasks = tasksData.filter(t => t.role === 'Reviewer')
-    // Roles for LAINNYA subfolders (assigned production staff)
-    const lainnyaRoles = ['Reporter', 'Photographer & Audio', 'Videographer & Audio']
-    const lainnyaTasks = tasksData.filter(t => lainnyaRoles.includes(t.role))
+    // Fix 2: LAINNYA subfolders for ALL staff (Stage 1 + Stage 2) excluding Reviewer & Publishers
+    const allProductionRoles = ['Reporter', 'Photographer & Audio', 'Videographer & Audio', 'Graphic Designer', 'Editor (Media)', 'Editor (Web Article & Social Media)', 'Streaming Operator', 'Podcast Operator']
+    const lainnyaTasks = tasksData.filter(t => allProductionRoles.includes(t.role))
     
     // Helper to generate user subfolders for a given parent
     const generateSubfolders = (parentFolderId: string, parentFolderName: string, taskList: Array<{ role: string; assignedTo: string }>, parentTs: number) => {

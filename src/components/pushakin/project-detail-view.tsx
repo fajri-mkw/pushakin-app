@@ -874,45 +874,55 @@ function TaskCard({
   const isPublisherTask = config.type === 'download_link'
   
   // Get folders for download/upload based on stage
+  // Fix 3: getDownloadFolders now also shows user subfolders
   const getDownloadFolders = () => {
     let allowedIds = ['raw', 'revised', 'final', 'desain', 'lainnya']
     if (task.stage === 2) allowedIds = ['raw', 'desain', 'lainnya']
     if (task.stage === 3) allowedIds = ['revised', 'lainnya']
     if (task.stage === 4) allowedIds = ['final', 'revised', 'lainnya']
     
+    const myRole = currentUser?.role || ''
+    
     return visibleFolders.filter(f => {
-      if (!allowedIds.includes(f.folderId)) return false
-      return f.assignedRoles?.includes(currentUser?.role || '') || !f.assignedRoles || f.assignedRoles.length === 0
+      const folderId = f.folderId || ''
+      const parentId = f.parentFolderId || ''
+      // Match by folderId (parent) or parentFolderId (subfolder)
+      if (!allowedIds.includes(folderId) && !allowedIds.includes(parentId)) return false
+      
+      // Parent folders: check role
+      if (!f.parentFolderId) {
+        return f.assignedRoles?.includes(myRole) || !f.assignedRoles || f.assignedRoles.length === 0
+      }
+      // Subfolders: show user's own + sibling subfolders in same parent (role-based)
+      return f.assignedRoles?.includes(myRole) || !f.assignedRoles || f.assignedRoles.length === 0
     })
   }
 
+  // Fix 4 + Fix 5: getUploadFolders with desain for stage 2, fallback only parent folders
   const getUploadFolders = () => {
     let allowedIds = ['raw', 'revised', 'final', 'desain', 'lainnya']
     if (task.stage === 1) allowedIds = ['raw', 'desain', 'lainnya']
-    if (task.stage === 2) allowedIds = ['revised', 'lainnya']
+    if (task.stage === 2) allowedIds = ['revised', 'desain', 'lainnya'] // Fix 4: stage 2 tambah 'desain'
     if (task.stage === 3) allowedIds = ['final', 'revised', 'lainnya']
     
-    // Separate parent folders and subfolders from visibleFolders
+    // Separate subfolders and parent folders
     const allSubfolders = visibleFolders.filter(f => f.parentFolderId)
     const myRole = currentUser?.role || ''
     
-    // First, try to find the user's specific subfolder
-    // Subfolder's assignedRoles must include the user's role AND its parentFolderId must match an allowed parent
+    // First: find user's specific subfolder(s) where role matches
     const mySubfolders = allSubfolders.filter(sub => {
-      const parentFolderId = sub.parentFolderId || ''
-      // Check if the parent folder type is in allowedIds
-      if (!allowedIds.includes(parentFolderId)) return false
-      // Check if this subfolder is assigned to the user's role
+      const parentId = sub.parentFolderId || ''
+      if (!allowedIds.includes(parentId)) return false
       return sub.assignedRoles?.includes(myRole)
     })
     
     if (mySubfolders.length > 0) {
-      // Return the user's specific subfolder(s) as upload targets
       return mySubfolders
     }
     
-    // Fallback: return parent folders the user has access to
+    // Fix 5: fallback only returns parent folders (skip subfolders)
     return visibleFolders.filter(f => {
+      if (f.parentFolderId) return false // skip subfolders in fallback
       if (!allowedIds.includes(f.folderId)) return false
       return f.assignedRoles?.includes(myRole) || !f.assignedRoles || f.assignedRoles.length === 0
     })

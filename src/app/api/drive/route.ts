@@ -2,13 +2,14 @@ import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
 import { google } from 'googleapis'
 
-// Interface for folder creation result
+// Interface for folder creation result — sent to frontend
 interface CreatedFolder {
   id: string
   name: string
   webViewLink: string
   folderId: string
-  parentFolderId?: string
+  parentFolderId?: string | null   // null = parent folder, string = parent's folderId (e.g. "raw")
+  assignedRoles: string[]          // always sent so frontend knows access
 }
 
 // Interface for assigned users
@@ -23,8 +24,6 @@ interface AssignedUser {
 const STAGE1_ROLES = ['Reporter', 'Photographer & Audio', 'Videographer & Audio', 'Graphic Designer']
 const STAGE2_ROLES = ['Editor (Media)', 'Editor (Web Article & Social Media)', 'Streaming Operator', 'Podcast Operator']
 const REVIEWER_ROLES = ['Reviewer']
-// Roles for LAINNYA subfolders (assigned production staff)
-const LAINNYA_ROLES = ['Reporter', 'Photographer & Audio', 'Videographer & Audio']
 
 // Create Google Drive client from service account
 function getDriveClient(serviceAccountKey: string) {
@@ -78,7 +77,9 @@ async function createFolder(
     id: response.data.id!,
     name: response.data.name!,
     webViewLink: response.data.webViewLink!,
-    folderId: response.data.id!
+    folderId: response.data.id!,
+    parentFolderId: null,
+    assignedRoles: []
   }
 }
 
@@ -118,8 +119,8 @@ function generateUserCode(userName: string): string {
 // Create user subfolders inside a parent folder
 async function createUserSubfolders(
   drive: ReturnType<typeof google.drive>,
-  parentFolderId: string,
-  parentFolderType: string,
+  parentDriveFolderId: string,      // actual Google Drive folder ID
+  parentFolderType: string,         // "raw", "revised", etc.
   users: AssignedUser[],
   sharedDriveId: string,
   createdFolders: CreatedFolder[]
@@ -131,14 +132,16 @@ async function createUserSubfolders(
     const userSubfolder = await createFolder(
       drive,
       subfolderName,
-      parentFolderId,
+      parentDriveFolderId,
       sharedDriveId
     )
     
+    // Override folderId & parentFolderId for frontend routing
     createdFolders.push({
       ...userSubfolder,
       folderId: `${parentFolderType}-${user.role.toLowerCase().replace(/\s*&\s*/g, '-')}-${user.userId}`,
-      parentFolderId: parentFolderType
+      parentFolderId: parentFolderType,   // link to parent (e.g. "raw")
+      assignedRoles: [user.role]           // this subfolder belongs to this role
     })
     
     console.log(`[DRIVE] Created user subfolder "${subfolderName}" inside ${parentFolderType} for ${user.userName} (${user.role})`)
@@ -221,7 +224,9 @@ export async function POST(request: NextRequest) {
         )
         createdFolders.push({
           ...subFolder,
-          folderId: folderType
+          folderId: folderType,
+          parentFolderId: null,       // parent folder = no parent
+          assignedRoles: []            // parent folders are accessible to all assigned roles
         })
         folderIdMap[folderType] = subFolder.id
         // Subfolders inherit permissions from parent, no need to share individually
@@ -231,39 +236,39 @@ export async function POST(request: NextRequest) {
     // Filter users by stage for subfolder creation
     const allUsers = assignedUsers || []
     
-    // RAW folder → Subfolders for Stage 1: Reporter, Photographer & Audio, Videographer & Audio, Graphic Designer
+    // ─── RAW folder → Subfolders for Stage 1 ───
     const stage1Users = allUsers.filter(u => STAGE1_ROLES.includes(u.role))
     if (folderIdMap['raw'] && stage1Users.length > 0) {
       console.log('[DRIVE] Creating Stage 1 user subfolders in RAW:', stage1Users.map(u => u.userName).join(', '))
       await createUserSubfolders(drive, folderIdMap['raw'], 'raw', stage1Users, settings.driveSharedDriveId, createdFolders)
     }
     
-    // REVISED folder → Subfolders for Stage 2: Editor (Media), Editor (Web Article & Social Media), Streaming Operator, Podcast Operator
+    // ─── REVISED folder → Subfolders for Stage 2 ───
     const stage2Users = allUsers.filter(u => STAGE2_ROLES.includes(u.role))
     if (folderIdMap['revised'] && stage2Users.length > 0) {
       console.log('[DRIVE] Creating Stage 2 user subfolders in REVISED:', stage2Users.map(u => u.userName).join(', '))
       await createUserSubfolders(drive, folderIdMap['revised'], 'revised', stage2Users, settings.driveSharedDriveId, createdFolders)
     }
     
-    // DESAIN folder → Subfolders for Graphic Designer (Stage 1 only)
+    // ─── DESAIN folder → Subfolders for Graphic Designer ───
     const graphicDesignerUsers = allUsers.filter(u => u.role === 'Graphic Designer')
     if (folderIdMap['desain'] && graphicDesignerUsers.length > 0) {
       console.log('[DRIVE] Creating Graphic Designer subfolders in DESAIN:', graphicDesignerUsers.map(u => u.userName).join(', '))
       await createUserSubfolders(drive, folderIdMap['desain'], 'desain', graphicDesignerUsers, settings.driveSharedDriveId, createdFolders)
     }
     
-    // FINAL PRODUCT → Subfolders for Reviewer (for revision uploads)
+    // ─── FINAL PRODUCT → Subfolders for Reviewer ───
     const reviewerUsers = allUsers.filter(u => REVIEWER_ROLES.includes(u.role))
     if (folderIdMap['final'] && reviewerUsers.length > 0) {
       console.log('[DRIVE] Creating Reviewer subfolders in FINAL PRODUCT:', reviewerUsers.map(u => u.userName).join(', '))
       await createUserSubfolders(drive, folderIdMap['final'], 'final', reviewerUsers, settings.driveSharedDriveId, createdFolders)
     }
 
-    // LAINNYA → Subfolders for Stage 1 assigned staff (Reporter, Photographer & Audio, Videographer & Audio)
-    const lainnyaUsers = allUsers.filter(u => LAINNYA_ROLES.includes(u.role))
-    if (folderIdMap['lainnya'] && lainnyaUsers.length > 0) {
-      console.log('[DRIVE] Creating Stage 1 staff subfolders in LAINNYA:', lainnyaUsers.map(u => u.userName).join(', '))
-      await createUserSubfolders(drive, folderIdMap['lainnya'], 'lainnya', lainnyaUsers, settings.driveSharedDriveId, createdFolders)
+    // ─── LAINNYA → Subfolders for ALL staff (Stage 1 + Stage 2) ───
+    const allProductionUsers = allUsers.filter(u => !REVIEWER_ROLES.includes(u.role) && !['Publisher Web', 'Publisher Social Media'].includes(u.role))
+    if (folderIdMap['lainnya'] && allProductionUsers.length > 0) {
+      console.log('[DRIVE] Creating ALL staff subfolders in LAINNYA:', allProductionUsers.map(u => u.userName).join(', '))
+      await createUserSubfolders(drive, folderIdMap['lainnya'], 'lainnya', allProductionUsers, settings.driveSharedDriveId, createdFolders)
     }
     
     return NextResponse.json({
