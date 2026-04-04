@@ -152,10 +152,11 @@ async function createUserSubfolders(
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { projectTitle, folderTypes, assignedUsers } = body as {
+    const { projectTitle, folderTypes, assignedUsers, uploadFolders } = body as {
       projectTitle: string
       folderTypes: string[]
       assignedUsers?: AssignedUser[] // ALL assigned users with stage info
+      uploadFolders?: Record<string, string[]> // folderId -> userIds who can upload
     }
     
     // Get settings
@@ -269,6 +270,36 @@ export async function POST(request: NextRequest) {
     if (folderIdMap['lainnya'] && allProductionUsers.length > 0) {
       console.log('[DRIVE] Creating ALL staff subfolders in LAINNYA:', allProductionUsers.map(u => u.userName).join(', '))
       await createUserSubfolders(drive, folderIdMap['lainnya'], 'lainnya', allProductionUsers, settings.driveSharedDriveId, createdFolders)
+    }
+    
+    // ─── Manager-specified upload folders (override if uploadFolders is provided) ───
+    if (uploadFolders && Object.keys(uploadFolders).length > 0) {
+      // Remove previously auto-created subfolders and re-create based on uploadFolders
+      // We only add new subfolders, don't remove the auto-created ones
+      console.log('[DRIVE] Manager specified custom uploadFolders:', JSON.stringify(uploadFolders))
+      
+      for (const [folderType, userIds] of Object.entries(uploadFolders)) {
+        if (!folderIdMap[folderType] || !userIds.length) continue
+        
+        const usersForFolder = (assignedUsers || []).filter(u => userIds.includes(u.userId))
+        
+        // Check if subfolders already created for this folder (avoid duplicates)
+        const existingSubfolders = createdFolders.filter(f => f.parentFolderId === folderType)
+        const existingUserIds = new Set(
+          existingSubfolders.map(f => {
+            // Extract userId from folderId pattern: folderType-role-userId
+            const parts = f.folderId.split('-')
+            return parts[parts.length - 1]
+          })
+        )
+        
+        const newUsers = usersForFolder.filter(u => !existingUserIds.has(u.userId))
+        
+        if (newUsers.length > 0) {
+          console.log(`[DRIVE] Creating manager-specified subfolders in ${folderType}:`, newUsers.map(u => u.userName).join(', '))
+          await createUserSubfolders(drive, folderIdMap[folderType], folderType, newUsers, settings.driveSharedDriveId, createdFolders)
+        }
+      }
     }
     
     return NextResponse.json({
