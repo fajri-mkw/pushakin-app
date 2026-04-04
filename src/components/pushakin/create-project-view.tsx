@@ -689,7 +689,11 @@ export function CreateProjectView() {
                     )}
                     onClick={() => toggleFolder(folder.id)}
                   >
-                    <Checkbox checked={isSelected} />
+                    <Checkbox 
+                      checked={isSelected} 
+                      onCheckedChange={() => toggleFolder(folder.id)}
+                      onClick={(e) => e.stopPropagation()}
+                    />
                     <span className={cn("text-xs font-bold truncate", isSelected ? "text-indigo-700" : "text-stone-500")}>
                       {folder.name.split(' (')[0]}
                     </span>
