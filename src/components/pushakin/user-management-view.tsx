@@ -35,14 +35,17 @@ import {
   Trash2, 
   Search, 
   UploadCloud,
-  Users
+  Users,
+  LogIn,
+  ShieldAlert
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useState, useRef } from 'react'
 import type { User } from '@/lib/store'
 
 export function UserManagementView() {
-  const { users, currentUser, showAlert, showConfirm, updateUser, addUser, deleteUser } = useAppStore()
+  const { users, currentUser, originalAdminUser, showAlert, showConfirm, updateUser, addUser, deleteUser, loginAsUser, restoreAdmin } = useAppStore()
+  const [loginAsTarget, setLoginAsTarget] = useState<User | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editMode, setEditMode] = useState(false)
@@ -212,6 +215,17 @@ export function UserManagementView() {
                 </TableCell>
                 <TableCell className="text-right">
                   <div className="flex items-center justify-end gap-2">
+                    {currentUser?.role === 'Admin' && user.role !== 'Admin' && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => setLoginAsTarget(user)}
+                        className="text-stone-400 hover:text-green-600 hover:bg-green-50"
+                        title="Login sebagai user ini"
+                      >
+                        <LogIn className="w-4 h-4" />
+                      </Button>
+                    )}
                     <Button
                       variant="ghost"
                       size="icon"
@@ -335,6 +349,35 @@ export function UserManagementView() {
               </Button>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+      {/* Login As Confirmation Dialog */}
+      <Dialog open={!!loginAsTarget} onOpenChange={() => setLoginAsTarget(null)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <LogIn className="w-5 h-5 text-green-600" />
+              Login Sebagai User
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-stone-600">
+            Anda akan masuk sebagai <strong>{loginAsTarget?.name}</strong> ({loginAsTarget?.role}). Semua tindakan akan dilakukan atas nama user tersebut.
+          </p>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setLoginAsTarget(null)}>Batal</Button>
+            <Button 
+              className="bg-green-600 hover:bg-green-700"
+              onClick={() => {
+                if (loginAsTarget) {
+                  loginAsUser(loginAsTarget)
+                  showAlert(`Berhasil login sebagai ${loginAsTarget.name}`)
+                  setLoginAsTarget(null)
+                }
+              }}
+            >
+              Login Sebagai {loginAsTarget?.name?.split(' ')[0]}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

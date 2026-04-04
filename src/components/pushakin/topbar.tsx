@@ -12,11 +12,11 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { useAppStore } from '@/lib/store'
-import { Bell } from 'lucide-react'
+import { Bell, ShieldAlert } from 'lucide-react'
 import { useMemo } from 'react'
 
 export function Topbar() {
-  const { activeView, currentUser, notifications, markNotifRead, setSelectedProjectId, setActiveView } = useAppStore()
+  const { activeView, currentUser, originalAdminUser, notifications, markNotifRead, setSelectedProjectId, setActiveView, restoreAdmin } = useAppStore()
 
   const myNotifications = useMemo(() => 
     notifications.filter(n => n.userId === currentUser?.id),
@@ -47,7 +47,23 @@ export function Topbar() {
   }
 
   return (
-    <header className="h-20 bg-gradient-to-r from-slate-50 via-white to-violet-50/30 border-b border-slate-200 flex items-center justify-between px-8 z-10 print:hidden">
+    <>
+      {/* Admin Impersonation Banner */}
+      {originalAdminUser && (
+        <div className="bg-amber-500 text-white px-6 py-2 flex items-center justify-between text-sm font-medium z-20 print:hidden">
+          <div className="flex items-center gap-2">
+            <ShieldAlert className="w-4 h-4" />
+            <span>Mode Impersonasi — Anda sedang login sebagai <strong>{currentUser?.name}</strong> ({currentUser?.role})</span>
+          </div>
+          <button
+            onClick={restoreAdmin}
+            className="bg-white/20 hover:bg-white/30 px-3 py-1 rounded-lg text-sm font-semibold transition-colors"
+          >
+            Kembali ke Admin
+          </button>
+        </div>
+      )}
+      <header className="h-20 bg-gradient-to-r from-slate-50 via-white to-violet-50/30 border-b border-slate-200 flex items-center justify-between px-8 z-10 print:hidden">
       <div>
         <h1 className="text-2xl font-bold text-slate-900 capitalize">
           {viewTitles[activeView] || 'Project Dashboard'}
@@ -110,5 +126,6 @@ export function Topbar() {
         </DropdownMenu>
       </div>
     </header>
+    </>
   )
 }
