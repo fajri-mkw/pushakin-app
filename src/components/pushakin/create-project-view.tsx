@@ -12,13 +12,25 @@ import {
   Users, 
   Folder, 
   Loader2,
-  FileText
+  FileText,
+  BookTemplate,
+  Plus,
+  Trash2,
+  ChevronDown
 } from 'lucide-react'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { cn } from '@/lib/utils'
 
 const OPSI_KEGIATAN = ['Peliputan', 'Pemberitaan', 'Live Streaming', 'Podcast', 'Desain', 'Lainnya']
 const OPSI_OUTPUT = ['Teks', 'Foto', 'Video', 'Audio', 'Streaming', 'Desain', 'Podcast', 'Lainnya']
+const TEMPLATE_STORAGE_KEY = 'pushakin_desc_templates'
+
+interface DescTemplate {
+  id: string
+  name: string
+  content: string
+  createdAt: number
+}
 
 export function CreateProjectView() {
   const { currentUser, users, showAlert, setActiveView, addProject, addNotification, addSuratTugas, isCreatingProject, setIsCreatingProject } = useAppStore()
@@ -39,6 +51,51 @@ export function CreateProjectView() {
   const [outputLainnya, setOutputLainnya] = useState('')
   const [driveAutoCreate, setDriveAutoCreate] = useState(false)
   const [driveCreatingStatus, setDriveCreatingStatus] = useState<string | null>(null)
+  const [descTemplates, setDescTemplates] = useState<DescTemplate[]>([])
+  const [showTemplatePanel, setShowTemplatePanel] = useState(false)
+  const [newTemplateName, setNewTemplateName] = useState('')
+  const [newTemplateContent, setNewTemplateContent] = useState('')
+  const [showNewTemplateForm, setShowNewTemplateForm] = useState(false)
+
+  // Load templates from localStorage
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(TEMPLATE_STORAGE_KEY)
+      if (saved) {
+        setDescTemplates(JSON.parse(saved))
+      }
+    } catch {}
+  }, [])
+
+  const saveTemplates = useCallback((templates: DescTemplate[]) => {
+    setDescTemplates(templates)
+    try {
+      localStorage.setItem(TEMPLATE_STORAGE_KEY, JSON.stringify(templates))
+    } catch {}
+  }, [])
+
+  const createTemplate = () => {
+    if (!newTemplateName.trim() || !newTemplateContent.trim()) return
+    const template: DescTemplate = {
+      id: `tpl-${Date.now()}`,
+      name: newTemplateName.trim(),
+      content: newTemplateContent.trim(),
+      createdAt: Date.now()
+    }
+    saveTemplates([...descTemplates, template])
+    setNewTemplateName('')
+    setNewTemplateContent('')
+    setShowNewTemplateForm(false)
+  }
+
+  const deleteTemplate = (id: string) => {
+    saveTemplates(descTemplates.filter(t => t.id !== id))
+  }
+
+  const applyTemplate = (content: string) => {
+    setDesc(content)
+    setShowTemplatePanel(false)
+  }
 
   const toggleItem = (setter: typeof setJenisKegiatan, currentItems: string[], item: string) => {
     if (currentItems.includes(item)) {
@@ -578,7 +635,116 @@ export function CreateProjectView() {
             </div>
 
             <div className="md:col-span-2">
-              <Label htmlFor="desc">Detail & Instruksi Permohonan</Label>
+              <div className="flex items-center justify-between mb-1">
+                <Label htmlFor="desc">Detail & Instruksi Permohonan</Label>
+                <div className="relative">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowTemplatePanel(!showTemplatePanel)}
+                    className="gap-1.5 text-xs border-indigo-200 text-indigo-600 hover:bg-indigo-50"
+                  >
+                    <BookTemplate className="w-3.5 h-3.5" />
+                    <span>Template</span>
+                    <ChevronDown className={cn("w-3 h-3 transition-transform", showTemplatePanel && "rotate-180")} />
+                  </Button>
+
+                  {showTemplatePanel && (
+                    <div className="absolute right-0 top-full mt-1 w-80 bg-white rounded-xl border border-stone-200 shadow-lg z-50 overflow-hidden">
+                      <div className="p-3 bg-stone-50 border-b border-stone-200">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold text-stone-700">Template Deskripsi</span>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setShowNewTemplateForm(!showNewTemplateForm)}
+                            className="h-6 w-6 p-0 text-indigo-600 hover:bg-indigo-100"
+                          >
+                            <Plus className="w-3.5 h-3.5" />
+                          </Button>
+                        </div>
+
+                        {showNewTemplateForm && (
+                          <div className="mt-2 space-y-2">
+                            <Input
+                              type="text"
+                              placeholder="Nama template..."
+                              value={newTemplateName}
+                              onChange={e => setNewTemplateName(e.target.value)}
+                              className="h-8 text-xs"
+                            />
+                            <Textarea
+                              placeholder="Isi template deskripsi..."
+                              value={newTemplateContent}
+                              onChange={e => setNewTemplateContent(e.target.value)}
+                              rows={4}
+                              className="text-xs"
+                            />
+                            <div className="flex gap-1.5">
+                              <Button
+                                type="button"
+                                size="sm"
+                                onClick={createTemplate}
+                                disabled={!newTemplateName.trim() || !newTemplateContent.trim()}
+                                className="h-7 text-xs bg-indigo-600 hover:bg-indigo-700"
+                              >
+                                Simpan
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => { setShowNewTemplateForm(false); setNewTemplateName(''); setNewTemplateContent('') }}
+                                className="h-7 text-xs"
+                              >
+                                Batal
+                              </Button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      {descTemplates.length === 0 && !showNewTemplateForm && (
+                        <div className="p-4 text-center">
+                          <p className="text-xs text-stone-400">Belum ada template.</p>
+                          <p className="text-[10px] text-stone-300 mt-1">Klik + untuk membuat template baru.</p>
+                        </div>
+                      )}
+
+                      {descTemplates.length > 0 && (
+                        <div className="max-h-48 overflow-y-auto">
+                          {descTemplates.map(tpl => (
+                            <div
+                              key={tpl.id}
+                              className="flex items-start gap-2 p-2.5 hover:bg-stone-50 border-b border-stone-100 last:border-0 group"
+                            >
+                              <button
+                                type="button"
+                                onClick={() => applyTemplate(tpl.content)}
+                                className="flex-1 text-left min-w-0"
+                              >
+                                <div className="text-xs font-semibold text-stone-700 truncate">{tpl.name}</div>
+                                <div className="text-[10px] text-stone-400 mt-0.5 line-clamp-2">{tpl.content}</div>
+                              </button>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => deleteTemplate(tpl.id)}
+                                className="h-6 w-6 p-0 text-red-400 hover:text-red-600 hover:bg-red-50 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </Button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
               <Textarea
                 id="desc"
                 required
