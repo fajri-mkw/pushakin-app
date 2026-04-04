@@ -892,9 +892,29 @@ function TaskCard({
     if (task.stage === 2) allowedIds = ['revised', 'lainnya']
     if (task.stage === 3) allowedIds = ['final', 'revised', 'lainnya']
     
+    // Separate parent folders and subfolders from visibleFolders
+    const allSubfolders = visibleFolders.filter(f => f.parentFolderId)
+    const myRole = currentUser?.role || ''
+    
+    // First, try to find the user's specific subfolder
+    // Subfolder's assignedRoles must include the user's role AND its parentFolderId must match an allowed parent
+    const mySubfolders = allSubfolders.filter(sub => {
+      const parentFolderId = sub.parentFolderId || ''
+      // Check if the parent folder type is in allowedIds
+      if (!allowedIds.includes(parentFolderId)) return false
+      // Check if this subfolder is assigned to the user's role
+      return sub.assignedRoles?.includes(myRole)
+    })
+    
+    if (mySubfolders.length > 0) {
+      // Return the user's specific subfolder(s) as upload targets
+      return mySubfolders
+    }
+    
+    // Fallback: return parent folders the user has access to
     return visibleFolders.filter(f => {
       if (!allowedIds.includes(f.folderId)) return false
-      return f.assignedRoles?.includes(currentUser?.role || '') || !f.assignedRoles || f.assignedRoles.length === 0
+      return f.assignedRoles?.includes(myRole) || !f.assignedRoles || f.assignedRoles.length === 0
     })
   }
 

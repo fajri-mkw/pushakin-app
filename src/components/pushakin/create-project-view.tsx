@@ -106,6 +106,8 @@ export function CreateProjectView() {
 
       // Stage 1 roles that upload to RAW folder
       const stage1Roles = ['Reporter', 'Photographer & Audio', 'Videographer & Audio', 'Graphic Designer']
+      // Stage 2 roles that upload to REVISED folder
+      const stage2Roles = ['Editor (Media)', 'Editor (Web Article & Social Media)', 'Streaming Operator', 'Podcast Operator']
       const stage1Tasks = tasks.filter(t => stage1Roles.includes(t.role))
 
       // Generate folder data - either real or mock
@@ -125,13 +127,14 @@ export function CreateProjectView() {
         // Try to create real Google Drive folders
         setDriveCreatingStatus('Membuat folder di Google Drive...')
         try {
-          // Prepare stage1Users for subfolder creation
-          const stage1UsersData = stage1Tasks.map(t => {
+          // Prepare assignedUsers for ALL stages subfolder creation
+          const assignedUsersData = tasks.map(t => {
             const user = users.find(u => u.id === t.assignedTo)
             return {
               role: t.role,
               userName: user?.name || 'Unknown',
-              userId: t.assignedTo
+              userId: t.assignedTo,
+              stage: t.stage
             }
           }).filter(u => u.userId) // Only include if user is assigned
 
@@ -141,7 +144,7 @@ export function CreateProjectView() {
             body: JSON.stringify({
               projectTitle: title,
               folderTypes: selectedFolders,
-              stage1Users: stage1UsersData
+              assignedUsers: assignedUsersData
             })
           })
           
@@ -202,8 +205,7 @@ export function CreateProjectView() {
           customOutput: kebutuhanOutput.includes('Lainnya') ? outputLainnya : '',
           managerId: currentUser?.id,
           tasks,
-          driveFolders: generatedFolders,
-          sendEmailNotif
+          driveFolders: generatedFolders
         })
       })
 
@@ -260,8 +262,8 @@ export function CreateProjectView() {
     }
   }
 
-  // Helper function to create mock folders with user-specific subfolders for RAW
-  const createMockFolders = (folderIds: string[], rolesToAssign: string[], tasksData: Array<{ role: string; assignedTo: string }>) => {
+  // Helper function to create mock folders with user-specific subfolders for RAW, REVISED, and DESAIN
+  const createMockFolders = (folderIds: string[], rolesToAssign: string[], tasksData: Array<{ role: string; assignedTo: string; stage: number }>) => {
     const folders: Array<{
       folderId: string
       name: string
@@ -276,15 +278,47 @@ export function CreateProjectView() {
     
     // Stage 1 roles that upload to RAW
     const stage1Roles = ['Reporter', 'Photographer & Audio', 'Videographer & Audio', 'Graphic Designer']
+    // Stage 2 roles that upload to REVISED
+    const stage2Roles = ['Editor (Media)', 'Editor (Web Article & Social Media)', 'Streaming Operator', 'Podcast Operator']
+    
     const stage1Tasks = tasksData.filter(t => stage1Roles.includes(t.role))
+    const stage2Tasks = tasksData.filter(t => stage2Roles.includes(t.role))
+    const graphicDesignerTasks = tasksData.filter(t => t.role === 'Graphic Designer')
+    
+    // Helper to generate user subfolders for a given parent
+    const generateSubfolders = (parentFolderId: string, parentFolderName: string, taskList: Array<{ role: string; assignedTo: string }>, parentTs: number) => {
+      taskList.forEach((task, idx) => {
+        const assignedUser = users.find(u => u.id === task.assignedTo)
+        if (assignedUser) {
+          const nameParts = assignedUser.name.split(' ')
+          const userCode = nameParts.length >= 2 
+            ? (nameParts[0][0] + nameParts[nameParts.length - 1][0]).toUpperCase()
+            : assignedUser.name.substring(0, 2).toUpperCase()
+          
+          const subfolderName = `${userCode}_${assignedUser.name.replace(/\s+/g, '_')}_${task.role.replace(/\s*&\s*/g, '_')}`
+          
+          folders.push({
+            folderId: `${parentFolderId}-${task.role.toLowerCase().replace(/\s*&\s*/g, '-')}-${idx}`,
+            name: subfolderName,
+            desc: `Subfolder untuk ${assignedUser.name} (${task.role})`,
+            color: 'text-stone-500',
+            bg: 'bg-stone-50',
+            border: 'border-stone-200',
+            link: `https://drive.google.com/drive/folders/mock-${parentFolderId}-${task.role.toLowerCase()}-${idx}-${Date.now()}`,
+            assignedRoles: [task.role],
+            parentFolderId: parentFolderId
+          })
+        }
+      })
+    }
     
     folderIds.forEach(folderId => {
       const optionInfo = FOLDER_OPTIONS.find(opt => opt.id === folderId)
       const assignedToFolder = (folderRoles[folderId] || []).filter(r => rolesToAssign.includes(r))
+      const nowTs = Date.now()
       
       if (folderId === 'raw' && stage1Tasks.length > 0) {
         // Create main RAW folder
-        const mainRawFolderId = `raw-main-${Date.now()}`
         folders.push({
           folderId: 'raw',
           name: optionInfo?.name || 'RAW FOLDER',
@@ -292,37 +326,41 @@ export function CreateProjectView() {
           color: optionInfo?.color || 'text-stone-600',
           bg: optionInfo?.bg || 'bg-stone-100',
           border: optionInfo?.border || 'border-stone-200',
-          link: `https://drive.google.com/drive/folders/mock-raw-main-${Date.now()}`,
+          link: `https://drive.google.com/drive/folders/mock-raw-main-${nowTs}`,
           assignedRoles: []
         })
-        
-        // Create user-specific subfolders inside RAW
-        stage1Tasks.forEach((task, idx) => {
-          const assignedUser = users.find(u => u.id === task.assignedTo)
-          if (assignedUser) {
-            // Generate unique code from user name (e.g., "Ahmad Fauzi" -> "AF")
-            const nameParts = assignedUser.name.split(' ')
-            const userCode = nameParts.length >= 2 
-              ? (nameParts[0][0] + nameParts[nameParts.length - 1][0]).toUpperCase()
-              : assignedUser.name.substring(0, 2).toUpperCase()
-            
-            const subfolderName = `${userCode}_${assignedUser.name.replace(/\s+/g, '_')}_${task.role.replace(/\s*&\s*/g, '_')}`
-            
-            folders.push({
-              folderId: `raw-${task.role.toLowerCase().replace(/\s*&\s*/g, '-')}-${idx}`,
-              name: subfolderName,
-              desc: `Subfolder untuk ${assignedUser.name} (${task.role})`,
-              color: 'text-stone-500',
-              bg: 'bg-stone-50',
-              border: 'border-stone-200',
-              link: `https://drive.google.com/drive/folders/mock-raw-${task.role.toLowerCase()}-${idx}-${Date.now()}`,
-              assignedRoles: [task.role],
-              parentFolderId: 'raw'
-            })
-          }
+        // Create Stage 1 user-specific subfolders inside RAW
+        generateSubfolders('raw', 'RAW', stage1Tasks, nowTs)
+      } else if (folderId === 'revised' && stage2Tasks.length > 0) {
+        // Create main REVISED folder
+        folders.push({
+          folderId: 'revised',
+          name: optionInfo?.name || 'REVISED FOLDER',
+          desc: optionInfo?.desc || '',
+          color: optionInfo?.color || 'text-orange-600',
+          bg: optionInfo?.bg || 'bg-orange-50',
+          border: optionInfo?.border || 'border-orange-200',
+          link: `https://drive.google.com/drive/folders/mock-revised-main-${nowTs}`,
+          assignedRoles: []
         })
+        // Create Stage 2 user-specific subfolders inside REVISED
+        generateSubfolders('revised', 'REVISED', stage2Tasks, nowTs)
+      } else if (folderId === 'desain' && graphicDesignerTasks.length > 0) {
+        // Create main DESAIN folder
+        folders.push({
+          folderId: 'desain',
+          name: optionInfo?.name || 'DESAIN FOLDER',
+          desc: optionInfo?.desc || '',
+          color: optionInfo?.color || 'text-blue-600',
+          bg: optionInfo?.bg || 'bg-blue-50',
+          border: optionInfo?.border || 'border-blue-200',
+          link: `https://drive.google.com/drive/folders/mock-desain-main-${nowTs}`,
+          assignedRoles: []
+        })
+        // Create Graphic Designer subfolders inside DESAIN
+        generateSubfolders('desain', 'DESAIN', graphicDesignerTasks, nowTs)
       } else {
-        // Non-RAW folders stay as-is
+        // Other folders (final, lainnya) stay as-is with no subfolders
         folders.push({
           folderId,
           name: optionInfo?.name || `Folder ${folderId}`,
@@ -330,7 +368,7 @@ export function CreateProjectView() {
           color: optionInfo?.color || 'text-stone-600',
           bg: optionInfo?.bg || 'bg-stone-100',
           border: optionInfo?.border || 'border-stone-200',
-          link: `https://drive.google.com/drive/folders/mock-${folderId}-${Date.now()}`,
+          link: `https://drive.google.com/drive/folders/mock-${folderId}-${nowTs}`,
           assignedRoles: assignedToFolder
         })
       }

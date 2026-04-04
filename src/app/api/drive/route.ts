@@ -10,6 +10,18 @@ interface CreatedFolder {
   folderId: string
 }
 
+// Interface for assigned users
+interface AssignedUser {
+  role: string
+  userName: string
+  userId: string
+  stage: number
+}
+
+// Stage-role mapping
+const STAGE1_ROLES = ['Reporter', 'Photographer & Audio', 'Videographer & Audio', 'Graphic Designer']
+const STAGE2_ROLES = ['Editor (Media)', 'Editor (Web Article & Social Media)', 'Streaming Operator', 'Podcast Operator']
+
 // Create Google Drive client from service account
 function getDriveClient(serviceAccountKey: string) {
   const credentials = JSON.parse(serviceAccountKey)
@@ -91,14 +103,51 @@ async function shareWithLink(
   }
 }
 
+// Generate user code from name (e.g., "Ahmad Fauzi" -> "AF")
+function generateUserCode(userName: string): string {
+  const nameParts = userName.split(' ')
+  return nameParts.length >= 2 
+    ? (nameParts[0][0] + nameParts[nameParts.length - 1][0]).toUpperCase()
+    : userName.substring(0, 2).toUpperCase()
+}
+
+// Create user subfolders inside a parent folder
+async function createUserSubfolders(
+  drive: ReturnType<typeof google.drive>,
+  parentFolderId: string,
+  parentFolderType: string,
+  users: AssignedUser[],
+  sharedDriveId: string,
+  createdFolders: CreatedFolder[]
+): Promise<void> {
+  for (const user of users) {
+    const userCode = generateUserCode(user.userName)
+    const subfolderName = `${userCode}_${user.userName.replace(/\s+/g, '_')}_${user.role.replace(/\s*&\s*/g, '_')}`
+    
+    const userSubfolder = await createFolder(
+      drive,
+      subfolderName,
+      parentFolderId,
+      sharedDriveId
+    )
+    
+    createdFolders.push({
+      ...userSubfolder,
+      folderId: `${parentFolderType}-${user.role.toLowerCase().replace(/\s*&\s*/g, '-')}-${user.userId}`
+    })
+    
+    console.log(`[DRIVE] Created user subfolder "${subfolderName}" inside ${parentFolderType} for ${user.userName} (${user.role})`)
+  }
+}
+
 // POST - Create folders for a project with link sharing
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { projectTitle, folderTypes } = body as {
+    const { projectTitle, folderTypes, assignedUsers } = body as {
       projectTitle: string
       folderTypes: string[]
-      stage1Users?: Array<{ role: string; userName: string; userId: string }> // Users assigned to Stage 1
+      assignedUsers?: AssignedUser[] // ALL assigned users with stage info
     }
     
     // Get settings
@@ -155,7 +204,7 @@ export async function POST(request: NextRequest) {
     }
     
     const createdFolders: CreatedFolder[] = []
-    let rawFolderId: string | null = null
+    const folderIdMap: Record<string, string> = {} // folderType -> Drive folder ID
     
     for (const folderType of folderTypes) {
       if (folderNames[folderType]) {
@@ -169,43 +218,37 @@ export async function POST(request: NextRequest) {
           ...subFolder,
           folderId: folderType
         })
-        
-        // Store RAW folder ID for creating user subfolders
-        if (folderType === 'raw') {
-          rawFolderId = subFolder.id
-        }
+        folderIdMap[folderType] = subFolder.id
         // Subfolders inherit permissions from parent, no need to share individually
       }
     }
     
-    // Create user-specific subfolders inside RAW folder
-    if (rawFolderId && body.stage1Users && body.stage1Users.length > 0) {
-      console.log('[DRIVE] Creating user subfolders in RAW for:', body.stage1Users.map(u => u.userName).join(', '))
-      
-      for (const user of body.stage1Users) {
-        // Generate unique code from user name (e.g., "Ahmad Fauzi" -> "AF")
-        const nameParts = user.userName.split(' ')
-        const userCode = nameParts.length >= 2 
-          ? (nameParts[0][0] + nameParts[nameParts.length - 1][0]).toUpperCase()
-          : user.userName.substring(0, 2).toUpperCase()
-        
-        const subfolderName = `${userCode}_${user.userName.replace(/\s+/g, '_')}_${user.role.replace(/\s*&\s*/g, '_')}`
-        
-        const userSubfolder = await createFolder(
-          drive,
-          subfolderName,
-          rawFolderId,
-          settings.driveSharedDriveId
-        )
-        
-        createdFolders.push({
-          ...userSubfolder,
-          folderId: `raw-${user.role.toLowerCase().replace(/\s*&\s*/g, '-')}-${user.userId}`
-        })
-        
-        console.log('[DRIVE] Created user subfolder:', subfolderName)
-      }
+    // Filter users by stage for subfolder creation
+    const allUsers = assignedUsers || []
+    
+    // RAW folder → Subfolders for Stage 1: Reporter, Photographer & Audio, Videographer & Audio, Graphic Designer
+    const stage1Users = allUsers.filter(u => STAGE1_ROLES.includes(u.role))
+    if (folderIdMap['raw'] && stage1Users.length > 0) {
+      console.log('[DRIVE] Creating Stage 1 user subfolders in RAW:', stage1Users.map(u => u.userName).join(', '))
+      await createUserSubfolders(drive, folderIdMap['raw'], 'raw', stage1Users, settings.driveSharedDriveId, createdFolders)
     }
+    
+    // REVISED folder → Subfolders for Stage 2: Editor (Media), Editor (Web Article & Social Media), Streaming Operator, Podcast Operator
+    const stage2Users = allUsers.filter(u => STAGE2_ROLES.includes(u.role))
+    if (folderIdMap['revised'] && stage2Users.length > 0) {
+      console.log('[DRIVE] Creating Stage 2 user subfolders in REVISED:', stage2Users.map(u => u.userName).join(', '))
+      await createUserSubfolders(drive, folderIdMap['revised'], 'revised', stage2Users, settings.driveSharedDriveId, createdFolders)
+    }
+    
+    // DESAIN folder → Subfolders for Graphic Designer (Stage 1 only)
+    const graphicDesignerUsers = allUsers.filter(u => u.role === 'Graphic Designer')
+    if (folderIdMap['desain'] && graphicDesignerUsers.length > 0) {
+      console.log('[DRIVE] Creating Graphic Designer subfolders in DESAIN:', graphicDesignerUsers.map(u => u.userName).join(', '))
+      await createUserSubfolders(drive, folderIdMap['desain'], 'desain', graphicDesignerUsers, settings.driveSharedDriveId, createdFolders)
+    }
+    
+    // LAINNYA → NO user subfolders (accessible to all)
+    // FINAL → NO subfolders (Publisher downloads only)
     
     return NextResponse.json({
       success: true,
