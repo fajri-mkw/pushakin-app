@@ -190,6 +190,7 @@ interface AppState {
   // Data
   users: User[]
   currentUser: User | null
+  originalAdminUser: User | null  // For admin impersonation
   projects: Project[]
   notifications: Notification[]
   suratTugas: SuratTugas[]
@@ -210,6 +211,8 @@ interface AppState {
   updateUser: (user: User) => void
   addUser: (user: User) => void
   deleteUser: (userId: string) => void
+  loginAsUser: (user: User) => void  // Admin impersonation
+  restoreAdmin: () => void  // Restore admin from impersonation
   
   // Actions - Projects
   setProjects: (projects: Project[]) => void
@@ -256,6 +259,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   // Initial State
   users: [],
   currentUser: null,
+  originalAdminUser: null,  // For admin impersonation
   projects: [],
   notifications: [],
   suratTugas: [],
@@ -278,6 +282,14 @@ export const useAppStore = create<AppState>((set, get) => ({
   }),
   addUser: (user) => set((state) => ({ users: [user, ...state.users] })),
   deleteUser: (userId) => set((state) => ({ users: state.users.filter(u => u.id !== userId) })),
+  loginAsUser: (user) => set((state) => ({
+    originalAdminUser: state.currentUser,
+    currentUser: user
+  })),
+  restoreAdmin: () => set((state) => ({
+    currentUser: state.originalAdminUser,
+    originalAdminUser: null
+  })),
   
   // Project Actions
   setProjects: (projects) => set({ projects }),
