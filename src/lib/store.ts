@@ -190,6 +190,7 @@ interface AppState {
   // Data
   users: User[]
   currentUser: User | null
+  realAdminUser: User | null // Stores the actual admin when impersonating
   projects: Project[]
   notifications: Notification[]
   suratTugas: SuratTugas[]
@@ -210,6 +211,8 @@ interface AppState {
   updateUser: (user: User) => void
   addUser: (user: User) => void
   deleteUser: (userId: string) => void
+  impersonateUser: (user: User) => void
+  stopImpersonating: () => void
   
   // Actions - Projects
   setProjects: (projects: Project[]) => void
@@ -256,6 +259,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   // Initial State
   users: [],
   currentUser: null,
+  realAdminUser: null,
   projects: [],
   notifications: [],
   suratTugas: [],
@@ -270,7 +274,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   
   // User Actions
   setUsers: (users) => set({ users }),
-  setCurrentUser: (user) => set({ currentUser: user, activeView: user ? 'dashboard' : 'login' }),
+  setCurrentUser: (user) => set({ currentUser: user, realAdminUser: null, activeView: user ? 'dashboard' : 'login' }),
   updateUser: (user) => set((state) => {
     const updatedUsers = state.users.map(u => u.id === user.id ? user : u)
     const updatedCurrentUser = state.currentUser?.id === user.id ? user : state.currentUser
@@ -278,6 +282,16 @@ export const useAppStore = create<AppState>((set, get) => ({
   }),
   addUser: (user) => set((state) => ({ users: [user, ...state.users] })),
   deleteUser: (userId) => set((state) => ({ users: state.users.filter(u => u.id !== userId) })),
+  impersonateUser: (user) => set((state) => ({
+    realAdminUser: state.currentUser,
+    currentUser: user,
+    activeView: 'dashboard'
+  })),
+  stopImpersonating: () => set((state) => {
+    const admin = state.realAdminUser
+    if (!admin) return {}
+    return { currentUser: admin, realAdminUser: null, activeView: 'dashboard' }
+  }),
   
   // Project Actions
   setProjects: (projects) => set({ projects }),
