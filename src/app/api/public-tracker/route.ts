@@ -62,7 +62,8 @@ export async function GET(request: NextRequest) {
         completed: completedProjects,
         active: activeProjects
       },
-      filter: timeFilter
+      filter: timeFilter,
+      lastUpdated: new Date().toISOString()
     })
   } catch (error) {
     console.error('Error fetching public tracker:', error)
